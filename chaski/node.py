@@ -8,6 +8,7 @@ import random
 from dataclasses import dataclass
 from collections import namedtuple
 import socket
+from functools import cached_property
 
 
 @dataclass
@@ -16,22 +17,48 @@ class Edge:
     writer: asyncio.StreamWriter
     reader: asyncio.StreamReader
     latency: float = 0
+    jitter: float = 0
     name: str = ""
-    lock: asyncio.Lock = asyncio.Lock()
     ping_in_progress: bool = False
 
     # ----------------------------------------------------------------------
     def __repr__(self):
-        return f"{self.name}: {self.latency}"
+        """"""
+        return f"{self.name}: N({self.latency: .1f}, {self.jitter: .1f})"
 
     # ----------------------------------------------------------------------
     def write(self, data):
+        """"""
         return self.writer.write(data)
 
     # ----------------------------------------------------------------------
     async def read(self, buffer):
-        async with self.lock:
-            return await self.reader.read(buffer)
+        """"""
+        return await self.reader.read(buffer)
+
+    # ----------------------------------------------------------------------
+    @cached_property
+    def address(self):
+        """"""
+        return self.writer.get_extra_info('peername')
+
+    # ----------------------------------------------------------------------
+    def update_latency(self, new_latency):
+        """"""
+        if self.jitter == 0:
+            self.latency = new_latency
+            self.jitter = 100
+        else:
+            prior_mean = self.latency
+            prior_variance = self.jitter
+
+            likelihood_mean = new_latency
+            likelihood_variance = prior_variance
+            posterior_mean = (prior_mean / prior_variance + likelihood_mean / likelihood_variance) / (1 / prior_variance + 1 / likelihood_variance)
+            posterior_variance = 1 / (1 / prior_variance + 1 / likelihood_variance)
+
+            self.latency = posterior_mean
+            self.jitter = posterior_variance
 
 
 Message = namedtuple("Message", "command data timestamp")
@@ -42,19 +69,23 @@ class UDPProtocol(DatagramProtocol):
 
     # ----------------------------------------------------------------------
     def __init__(self, node, on_message_received):
+        """"""
         self.node = node
         self.on_message_received = on_message_received
 
     # ----------------------------------------------------------------------
     def datagram_received(self, message, addr):
+        """"""
         asyncio.create_task(self.on_message_received(message, addr))
 
     # ----------------------------------------------------------------------
     def error_received(self, exc):
+        """"""
         logging.error(f"UDP error received: {exc}")
 
     # ----------------------------------------------------------------------
     def connection_lost(self, exc):
+        """"""
         logging.info("UDP connection closed")
 
 
@@ -79,12 +110,10 @@ class ChaskiNode:
         self.deserializer = deserializer
         self.buffer = buffer
         self.server = None
-        self._reader_loop = True
         self.suscriptions = set(suscriptions)
+        self.name = f"{name}: {self.suscriptions}"
 
         self.server_pairs = []
-
-        self.name = f"{name}: {self.suscriptions}"
 
         self.server_read_event = asyncio.Event()
         self.server_read_event.set()
@@ -96,11 +125,17 @@ class ChaskiNode:
         self.ping_events = {}
 
     # ----------------------------------------------------------------------
+    def __repr__(self):
+        """"""
+        return f"{{{self.name}: {self.port}}}"
+
+    # ----------------------------------------------------------------------
     async def connected(self, reader, writer):
         """"""
         async with self.lock:
             edge = Edge(writer=writer, reader=reader)
             self.server_pairs.append(edge)
+        logging.debug(f"{self.name}: New connection with {edge.address}")
         asyncio.create_task(self.reader_loop(edge))
 
     # ----------------------------------------------------------------------
@@ -116,10 +151,9 @@ class ChaskiNode:
                 message = self.deserializer(data)
                 await self.process_message(message, edge)
         except Exception as e:
-            logging.error(f"{self.name}: ReaderLoop: Error in reader_loop for {addr}: {e}")
+            logging.warning(f"{self.name}: Error in reader_loop for {addr}: {e}")
 
         finally:
-            logging.warning(f"ReaderLoop: Closing connection to {addr}")
             await self.close_connection(edge)
 
     # ----------------------------------------------------------------------
@@ -136,10 +170,10 @@ class ChaskiNode:
     async def process_message(self, message, edge):
         """"""
         if processor := getattr(self, f"process_{message.command}", None):
-            logging.warning(f"{self.name}: Processing {message.command}")
+            logging.debug(f"{self.name}: Processing {message.command}")
             await processor(message, edge)
         else:
-            logging.warning(f"No processor for {message.command}")
+            logging.warning(f"{self.name}: No processor for {message.command}")
 
     # ----------------------------------------------------------------------
     async def process_report_paired(self, message, edge):
@@ -158,8 +192,7 @@ class ChaskiNode:
             reuse_port=True,
         )
         addr = self.server.sockets[0].getsockname()
-        logging.debug(f"Serving on {addr}")
-
+        logging.debug(f"{self.name}: Serving on {addr}")
         asyncio.create_task(self.keep_alive())
 
         async with self.server:
@@ -178,23 +211,19 @@ class ChaskiNode:
                     try:
                         await server_edge.writer.drain()
                     except ConnectionResetError:
-                        logging.error(
-                            f"Connection lost while writing to {server_edge.name}"
+                        logging.warning(
+                            f"{self.name}: Connection lost while writing to {server_edge.name}"
                         )
                         await self.close_connection(server_edge)
-
         else:
             writer.write(data)
             try:
                 await writer.drain()
             except ConnectionResetError:
-                logging.error(
-                    f"Connection lost while writing to {writer.get_extra_info('peername')}"
+                logging.warning(
+                    f"{self.name}: Connection lost while writing to {writer.address}"
                 )
                 self.remove_closing_connection()
-
-            except Exception as e:
-                e
 
     # ----------------------------------------------------------------------
     async def connect_to_peer(
@@ -223,10 +252,7 @@ class ChaskiNode:
                              },
                              writer=writer)
 
-        logging.warning(
-            f"{self.name}: Ping {self.host}: {self.port} -> {peer_host}: {peer_port}"
-        )
-
+        logging.debug(f"{self.name}: New connection with {edge.writer.get_extra_info('peername')}")
         asyncio.create_task(self.reader_loop(edge))
         await self.ping(edge)
 
@@ -250,12 +276,11 @@ class ChaskiNode:
     # ----------------------------------------------------------------------
     async def process_rping(self, message, edge):
         """"""
-        server_edge = self.ping_events[message.data['ping_id']]
-        server_edge.latency = (
+        server_edge = self.ping_events.pop(message.data['ping_id'])
+        server_edge.update_latency((
             datetime.now() - message.data["source_timestamp"]
-        ).total_seconds() * 500
+        ).total_seconds() * 500)
         server_edge.name = message.data["name"]
-        logging.warning(f"Getting name: {server_edge.name}")
 
         await asyncio.sleep(0.1)
 
@@ -287,55 +312,30 @@ class ChaskiNode:
                     )
 
     # ----------------------------------------------------------------------
-    def __eq__(self, node):
-        """"""
-        return (node.host == self.host) and (node.port == self.port)
-
-    # ----------------------------------------------------------------------
-    def __gt__(self, node):
-        """"""
-        return node.port > self.port
-
-    # ----------------------------------------------------------------------
-    def __lt__(self, node):
-        """"""
-        return node.port < self.port
-
-    # ----------------------------------------------------------------------
-    def __hash__(self):
-        """"""
-        return hash((self.host, self.port))
-
-    # ----------------------------------------------------------------------
-    def __repr__(self):
-        """"""
-        return f"{self.name}: {self.port}" if self.name else f"CSK{{{self.port}}}"
-
-    # ----------------------------------------------------------------------
     async def remove_closing_connection(self):
         """"""
         async with self.lock:
             self.server_pairs = [
                 edge for edge in self.server_pairs if not edge.writer.is_closing()
             ]
-        logging.warning(f"Removed closing connection")
+        logging.debug(f"{self.name}: Removed closing connection")
 
     # ----------------------------------------------------------------------
     async def close_connection(self, edge):
         """"""
-        logging.warning(f"Closing connection to {edge}")
+        logging.debug(f"{self.name}: Closing connection to {edge}")
         if not edge.writer.is_closing():
             edge.writer.close()
             try:
                 await asyncio.wait_for(edge.writer.wait_closed(), 1)
             except asyncio.TimeoutError:
-                logging.warning(f"Timeout closing connection to {edge}")
+                logging.debug(f"{self.name}: Timeout closing connection to {edge}")
 
         async with self.lock:
             self.server_pairs = [
                 edge_ for edge_ in self.server_pairs if edge_.writer != edge.writer
             ]
-        logging.warning(f"Connection to {edge} closed and removed")
+        logging.debug(f"{self.name}: Connection to {edge} closed and removed")
 
     # ----------------------------------------------------------------------
     async def start_udp_server(self):
@@ -380,12 +380,17 @@ class ChaskiNode:
     # ----------------------------------------------------------------------
     async def request_status(self, dest_host, dest_port):
         """"""
+        logging.warning(f"{len(self.request_response_multiplexer)}")
+
         id_ = self.gen_id()
         self.request_response_multiplexer_events[id_] = asyncio.Event()
         data = {'id': id_}
         await self.send_udp_message('request', data, dest_host, dest_port)
         await self.request_response_multiplexer_events[id_].wait()
-        return self.request_response_multiplexer[id_]
+        status = self.request_response_multiplexer[id_]
+        self.request_response_multiplexer_events.pop(id_)
+        self.request_response_multiplexer.pop(id_)
+        return status
 
     # ----------------------------------------------------------------------
     async def request_forward(self, node, peer_port=None):
@@ -413,21 +418,19 @@ class ChaskiNode:
     # ----------------------------------------------------------------------
     async def keep_alive(self, interval=7):
         """"""
-
         while True:
             try:
-                logging.warning("Performing keep-alive check")
+                logging.debug(f"{self.name}: Performing keep-alive check")
 
                 for edge in self.server_pairs:
                     await self.ping(edge)
-                    logging.warning(f"{self.name} ping to {edge.name}")
+                    logging.debug(f"{self.name}: Ping to {edge.name}")
 
                 if self.paired_event.is_set():
                     self.paired_event.clear()
                     await self.close_connection(self.server_pairs[0])
-                    logging.warning(f"self.paired_event.clear()")
 
             except Exception as e:
-                logging.error(f"Error during keep-alive check: {e}")
+                logging.error(f"{self.name}: Error during keep-alive check: {e}")
 
             await asyncio.sleep(interval)
