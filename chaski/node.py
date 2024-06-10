@@ -243,7 +243,7 @@ class ChaskiNode:
             await asyncio.sleep(0.1)
 
     # ----------------------------------------------------------------------
-    async def discovery(self, node=None, on_pair='none'):
+    async def discovery(self, node=None, on_pair='none', timeout=3):
         """"""
         if not self.server_pairs:
             logging.warning(f"{self.name}: No connection to perform discovery.")
@@ -267,6 +267,7 @@ class ChaskiNode:
             "origin_port": self.port,
             "origin_name": self.name,
             "previous_node": self.name,
+            "visited": set([self.name]),
             "on_pair": on_pair,
             "root_host": node.host,
             "root_port": node.port,
@@ -280,6 +281,10 @@ class ChaskiNode:
             writer=node.writer,
         )
 
+        await asyncio.sleep(timeout)
+        logging.warning(f"{self.name}: Timeout!! then paired")
+        self.paired_event.set()
+
     # ----------------------------------------------------------------------
     async def close_connection(self, edge, port=None):
         """"""
@@ -291,6 +296,11 @@ class ChaskiNode:
 
         if not isinstance(edge, Edge):
             return
+
+        if len(self.server_pairs) == 1:
+            logging.warning(f"{self.name}: Orphan node!!")
+            logging.warning(f"{self.name}: Retring conection")
+            await self.connect_to_peer(edge)
 
         logging.debug(f"{self.name}: Closing connection to {edge}")
         if not edge.writer.is_closing():
@@ -357,6 +367,12 @@ class ChaskiNode:
         finally:
             logging.warning(f"{self.name}: Clossing conection with {edge}")
             logging.error(traceback.format_exc())
+
+            # if len(self.server_pairs) == 1:
+                # logging.warning(f"{self.name}: Orphan node!!")
+                # logging.warning(f"{self.name}: Retring conection")
+                # await self.connect_to_peer(edge)
+
             await self.close_connection(edge)
 
     # ----------------------------------------------------------------------
@@ -380,6 +396,7 @@ class ChaskiNode:
                 case 'disconnect':
                     await self.close_connection(message.data['root_host'], message.data['root_port'])
 
+            logging.warning(f"{self.name}: Paired!!")
             # self.discovering.set()
 
     # ----------------------------------------------------------------------
@@ -506,7 +523,17 @@ class ChaskiNode:
                 # logging.warning(f"{self.name}: Not ready to discovery.")
                 # return
             # await self.wait_for_all_edges_ready()
+            # logging.warning(f"{self.name}: Waiting...")
             await self.wait_fo_ready()
+            # logging.warning(f"{self.name}: Ready!!")
+
+            # logging.warning(f"{self.name}: {self.name} {message.data['visited']}, {message.data}")
+            if self.name in message.data['visited']:
+                logging.warning(f"{self.name}: Branch already visited: {message.data['visited']}")
+                return
+
+            new_data["visited"].add(self.name)
+            logging.warning(f"{self.name}: NO visited {message.data['visited']}")
 
             for server_edge in self.server_pairs:
                 if not server_edge.name in [
