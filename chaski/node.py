@@ -162,7 +162,7 @@ class ChaskiNode:
             self.paired_event.set()
 
         if run:
-            self.run()
+            asyncio.create_task(self.run())
 
     # ----------------------------------------------------------------------
     def __repr__(self):
@@ -180,10 +180,38 @@ class ChaskiNode:
         # self.server_read_event.set()
 
     # ----------------------------------------------------------------------
-    def run(self):
+    async def run(self):
         """"""
-        asyncio.create_task(self._start_tcp_server())
-        asyncio.create_task(self._start_udp_server())
+        # await asyncio.create_task(self._start_tcp_server())
+        # await asyncio.create_task(self._start_udp_server())
+
+        await asyncio.gather(
+            self._start_tcp_server(),
+            self._start_udp_server()
+        )
+
+    # ----------------------------------------------------------------------
+    async def stop(self):
+        """"""
+        for edge in self.server_pairs:
+            await self.close_connection(edge)
+
+        if hasattr(self, 'udp_transport'):
+            self.udp_transport.close()
+        # if hasattr(self, 'server'):
+            # self.server.close()
+            # await self.server.wait_closed()
+
+        # Cerrar el servidor TCP
+        if hasattr(self, 'server'):
+            self.server.close()
+            try:
+                await asyncio.wait_for(self.server.wait_closed(), timeout=5.0)
+            except asyncio.TimeoutError:
+                logging.warning("Timeout waiting for server to close")
+
+        if hasattr(self, '_keep_alive_task'):
+            self._keep_alive_task.cancel()
 
     # ----------------------------------------------------------------------
     async def connect_to_peer(
@@ -205,7 +233,8 @@ class ChaskiNode:
 
         await self.wait_for_all_edges_ready()
 
-        if (peer_host, peer_port) in [(edge.host, edge.port) for edge in self.server_pairs]:
+        if (peer_host, peer_port, False) in [(edge.host, edge.port, edge.writer.is_closing()) for edge in self.server_pairs]:
+        # if (peer_host, peer_port) in [(edge.host, edge.port) for edge in self.server_pairs]:
             logging.warning(f"{self.name}: Already connected with this node")
             return
 
@@ -229,6 +258,8 @@ class ChaskiNode:
 
     # ----------------------------------------------------------------------
     async def wait_for_all_edges_ready(self):
+        if not self.server_pairs:
+            return
         while True:
             all_ready = all(edge.host and edge.port and edge.name for edge in self.server_pairs)
             if all_ready:
@@ -295,12 +326,9 @@ class ChaskiNode:
                     break
 
         if not isinstance(edge, Edge):
+            logging.warning(f"{self.name}: {edge} is not a valid edge")
             return
-
-        if len(self.server_pairs) == 1:
-            logging.warning(f"{self.name}: Orphan node!!")
-            logging.warning(f"{self.name}: Retring conection")
-            await self.connect_to_peer(edge)
+        logging.debug(f"{self.name}: conection with {edge} will be removed")
 
         logging.debug(f"{self.name}: Closing connection to {edge}")
         if not edge.writer.is_closing():
@@ -312,22 +340,29 @@ class ChaskiNode:
 
         async with self.lock:
             self.server_pairs = [
-                edge_ for edge_ in self.server_pairs if edge_.writer != edge.writer
+                edge_ for edge_ in self.server_pairs if edge_ != edge
             ]
+
+        if len(self.server_pairs) == 0:
+            logging.warning(f"{self.name}: Orphan node!!")
+            logging.warning(f"{self.name}: Retring conection")
+            await self.connect_to_peer(edge)
+
         logging.debug(f"{self.name}: Connection to {edge} closed and removed")
 
     # ----------------------------------------------------------------------
-    async def _connected(self, reader, writer):
+    async def connected(self, reader, writer):
         """"""
         edge = Edge(writer=writer, reader=reader)
 
-        logging.warning(f"{self.name}: New connection with {edge.address}: {edge.host}")
+        logging.warning(f"{self.name}: Accepted connection from {writer.get_extra_info('peername')}")
+        logging.warning(f"{self.name}: X New connection with {edge.address}: {edge.host}")
         asyncio.create_task(self._reader_loop(edge))
 
         await self.wait_for_all_edges_ready()
 
-        if (edge.host, edge.port) in [(edge_.host, edge_.port) for edge_ in self.server_pairs]:
-            logging.warning(f"{self.name}: Already connected with this node")
+        if (edge.host, edge.port, False) in [(edge_.host, edge_.port, edge_.writer.is_closing()) for edge_ in self.server_pairs]:
+            logging.warning(f"{self.name}: X Already connected with this node")
             await self.close_connection(edge)
             return
 
@@ -366,7 +401,7 @@ class ChaskiNode:
             # logging.error(traceback.format_exc())
         finally:
             logging.warning(f"{self.name}: Clossing conection with {edge}")
-            logging.error(traceback.format_exc())
+            # logging.error(traceback.format_exc())
 
             # if len(self.server_pairs) == 1:
                 # logging.warning(f"{self.name}: Orphan node!!")
@@ -388,22 +423,22 @@ class ChaskiNode:
     async def _process_report_paired(self, message, edge):
         """"""
         if message.data["paired"]:
-            self.paired_event.set()
 
             match message.data['on_pair']:
                 case 'none':
                     pass
                 case 'disconnect':
+                    logging.warning(f"{self.name}: Diconnected after pair")
                     await self.close_connection(message.data['root_host'], message.data['root_port'])
 
             logging.warning(f"{self.name}: Paired!!")
-            # self.discovering.set()
+            self.paired_event.set()
 
     # ----------------------------------------------------------------------
     async def _start_tcp_server(self):
         """"""
         self.server = await asyncio.start_server(
-            self._connected,
+            self.connected,
             self.host,
             self.port,
             reuse_address=True,
@@ -411,7 +446,7 @@ class ChaskiNode:
         )
         addr = self.server.sockets[0].getsockname()
         logging.debug(f"{self.name}: Serving on {addr}")
-        asyncio.create_task(self._keep_alive())
+        self._keep_alive_task = asyncio.create_task(self._keep_alive())
 
         async with self.server:
             await self.server.serve_forever()
