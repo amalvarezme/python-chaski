@@ -10,15 +10,6 @@ from dataclasses import dataclass, field
 from collections import namedtuple
 from functools import cached_property
 
-# logging.basicConfig(
-    # level=logging.INFO,
-    # format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    # datefmt="%Y-%m-%d %H:%M:%S",
-# )
-
-# logger_main = logging.getLogger("ChaskiNodeMain")
-# logger_edge = logging.getLogger("ChaskiNodeEdge")
-
 
 @dataclass
 ########################################################################
@@ -30,35 +21,13 @@ class Edge:
     name: str = ""
     host: str = ""
     port: str = ""
-    suscriptions: set = field(default_factory=set)
+    subscriptions: set = field(default_factory=set)
     ping_in_progress: bool = False
 
     # ----------------------------------------------------------------------
     def __repr__(self):
         """"""
         return f"{self.name}: N({self.latency: .0f}, {self.jitter: .0f}) {self.host}: {self.port}"
-
-    # # ----------------------------------------------------------------------
-    # def write(self, data):
-    # """"""
-    # return self.writer.write(data)
-
-    # # ----------------------------------------------------------------------
-    # async def read(self, buffer):
-    # """"""
-    # return await self.reader.read(buffer)
-
-    # # ----------------------------------------------------------------------
-    # @cached_property
-    # def host(self):
-        # """"""
-        # return self.local_address[0]
-
-    # # ----------------------------------------------------------------------
-    # @cached_property
-    # def port(self):
-        # """"""
-        # return self.local_address[1]
 
     # ----------------------------------------------------------------------
     @cached_property
@@ -131,9 +100,8 @@ class ChaskiNode:
         port,
         serializer=pickle.dumps,
         deserializer=pickle.loads,
-        # buffer=2**15,
         name=None,
-        suscriptions=[],
+        subscriptions=[],
         run=False,
         ttl=64,
         root=False,
@@ -143,18 +111,13 @@ class ChaskiNode:
         self.port = port
         self.serializer = serializer
         self.deserializer = deserializer
-        # self.buffer = buffer
         self.server = None
         self.ttl = ttl
-        self.suscriptions = set(suscriptions)
+        self.suscriptions = set(subscriptions)
         self.name = f"{name}: {self.suscriptions}"
         self.parent_node = None
         self.server_pairs = []
-        # self.server_read_event = asyncio.Event()
-        # self.server_read_event.set()
         self.paired_event = asyncio.Event()
-        # self.discovering = asyncio.Event()
-        # self.discovering.set()
         self.lock = asyncio.Lock()
         self.ping_events = {}
 
@@ -169,22 +132,10 @@ class ChaskiNode:
         """"""
         return f"{{{self.name}: {self.port}}}"
 
-    # # ----------------------------------------------------------------------
-    # def pause_reading(self):
-        # """"""
-        # self.server_read_event.clear()
-
-    # # ----------------------------------------------------------------------
-    # def resume_reading(self):
-        # """"""
-        # self.server_read_event.set()
-
     # ----------------------------------------------------------------------
     async def run(self):
         """"""
-        # await asyncio.create_task(self._start_tcp_server())
-        # await asyncio.create_task(self._start_udp_server())
-
+        self.server_closing = False
         await asyncio.gather(
             self._start_tcp_server(),
             self._start_udp_server()
@@ -193,25 +144,23 @@ class ChaskiNode:
     # ----------------------------------------------------------------------
     async def stop(self):
         """"""
+        self.server_closing = True
+
         for edge in self.server_pairs:
             await self.close_connection(edge)
 
         if hasattr(self, 'udp_transport'):
             self.udp_transport.close()
-        # if hasattr(self, 'server'):
-            # self.server.close()
-            # await self.server.wait_closed()
 
-        # Cerrar el servidor TCP
+        if hasattr(self, '_keep_alive_task'):
+            self._keep_alive_task.cancel()
+
         if hasattr(self, 'server'):
             self.server.close()
             try:
                 await asyncio.wait_for(self.server.wait_closed(), timeout=5.0)
             except asyncio.TimeoutError:
                 logging.warning("Timeout waiting for server to close")
-
-        if hasattr(self, '_keep_alive_task'):
-            self._keep_alive_task.cancel()
 
     # ----------------------------------------------------------------------
     async def connect_to_peer(
@@ -234,11 +183,15 @@ class ChaskiNode:
         await self.wait_for_all_edges_ready()
 
         if (peer_host, peer_port, False) in [(edge.host, edge.port, edge.writer.is_closing()) for edge in self.server_pairs]:
-        # if (peer_host, peer_port) in [(edge.host, edge.port) for edge in self.server_pairs]:
             logging.warning(f"{self.name}: Already connected with this node")
             return
 
-        reader, writer = await asyncio.open_connection(peer_host, peer_port)
+        addr_info = socket.getaddrinfo(self.host, self.port, socket.AF_UNSPEC, socket.SOCK_DGRAM)
+        if not addr_info:
+            raise ValueError(f"Cannot resolve address: {self.host}")
+        family, socktype, proto, canonname, sockaddr = addr_info[0]
+
+        reader, writer = await asyncio.open_connection(peer_host, peer_port, family=family)
         edge = Edge(writer=writer, reader=reader)
 
         async with self.lock:
@@ -281,7 +234,7 @@ class ChaskiNode:
             return
 
         for edge in self.server_pairs:
-            if edge.suscriptions.intersection(self.suscriptions):
+            if edge.subscriptions.intersection(self.suscriptions):
                 logging.warning(f"{self.name}: Already paired.")
                 self.paired_event.set()
                 return
@@ -319,6 +272,8 @@ class ChaskiNode:
     # ----------------------------------------------------------------------
     async def close_connection(self, edge, port=None):
         """"""
+        await self.wait_for_all_edges_ready()
+
         if port:
             for edge_ in self.server_pairs:
                 if (edge_.host == edge) and (edge_.port == port):
@@ -343,10 +298,13 @@ class ChaskiNode:
                 edge_ for edge_ in self.server_pairs if edge_ != edge
             ]
 
-        if len(self.server_pairs) == 0:
+        if len(self.server_pairs) == 0 and not self.server_closing:
             logging.warning(f"{self.name}: Orphan node!!")
             logging.warning(f"{self.name}: Retring conection")
-            await self.connect_to_peer(edge)
+
+            status = await self._request_status(edge.host, edge.port)
+            if status.data['serving']:
+                await self.connect_to_peer(edge)
 
         logging.debug(f"{self.name}: Connection to {edge} closed and removed")
 
@@ -402,15 +360,10 @@ class ChaskiNode:
         finally:
             logging.warning(f"{self.name}: Clossing conection with {edge}")
             # logging.error(traceback.format_exc())
-
-            # if len(self.server_pairs) == 1:
-                # logging.warning(f"{self.name}: Orphan node!!")
-                # logging.warning(f"{self.name}: Retring conection")
-                # await self.connect_to_peer(edge)
-
             await self.close_connection(edge)
 
     # ----------------------------------------------------------------------
+
     async def _process_message(self, message, edge):
         """"""
         if processor := getattr(self, f"_process_{message.command}", None):
@@ -428,7 +381,8 @@ class ChaskiNode:
                 case 'none':
                     pass
                 case 'disconnect':
-                    logging.warning(f"{self.name}: Diconnected after pair")
+                    logging.warning(f"{self.name}: Diconnected after pair {message.data['root_host']} {message.data['root_port']}")
+                    # await asyncio.sleep(3)
                     await self.close_connection(message.data['root_host'], message.data['root_port'])
 
             logging.warning(f"{self.name}: Paired!!")
@@ -522,7 +476,7 @@ class ChaskiNode:
         server_edge.name = message.data["name"]
         server_edge.host = message.data["host"]
         server_edge.port = message.data["port"]
-        server_edge.suscriptions = message.data["suscriptions"]
+        server_edge.subscriptions = message.data["suscriptions"]
 
         await asyncio.sleep(0)
 
@@ -553,16 +507,7 @@ class ChaskiNode:
             new_data["previous_node"] = self.name
             new_data["ttl"] = message.data["ttl"] - 1
 
-            # if not all([server_edge.name for server_edge in self.server_pairs]):
-                # qq = [server_edge.name for server_edge in self.server_pairs]
-                # logging.warning(f"{self.name}: Not ready to discovery.")
-                # return
-            # await self.wait_for_all_edges_ready()
-            # logging.warning(f"{self.name}: Waiting...")
             await self.wait_fo_ready()
-            # logging.warning(f"{self.name}: Ready!!")
-
-            # logging.warning(f"{self.name}: {self.name} {message.data['visited']}, {message.data}")
             if self.name in message.data['visited']:
                 logging.warning(f"{self.name}: Branch already visited: {message.data['visited']}")
                 return
@@ -594,7 +539,13 @@ class ChaskiNode:
     async def _start_udp_server(self):
         """"""
         loop = asyncio.get_running_loop()
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+        addr_info = socket.getaddrinfo(self.host, self.port, socket.AF_UNSPEC, socket.SOCK_DGRAM)
+        if not addr_info:
+            raise ValueError(f"Cannot resolve address: {self.host}")
+        family, socktype, proto, canonname, sockaddr = addr_info[0]
+        sock = socket.socket(family, socktype, proto)
+
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
         sock.bind((self.host, self.port))
@@ -620,9 +571,9 @@ class ChaskiNode:
             data = {
                 "id": message.data["id"],
                 "paired": self.paired_event.is_set(),
-                # "discovering": self.discovering.is_set(),
+                "serving": not self.server_closing,
             }
-            await self._send_udp_message("response", data, *addr)
+            await self._send_udp_message("response", data, *addr[:2])
 
         elif message.command == "response":
             self.request_response_multiplexer[message.data["id"]] = message
