@@ -77,6 +77,7 @@ class TestConnections:
             self.assertEqual(len(nodes[i].server_pairs), 1, f"Node {i} connection failed")
 
     # ----------------------------------------------------------------------
+
     async def test_multiple_connections(self):
         """
         Test multiple connections to a single node.
