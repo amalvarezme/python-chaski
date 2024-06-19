@@ -227,7 +227,7 @@ class ChaskiNode:
             await asyncio.sleep(0.1)
 
     # ----------------------------------------------------------------------
-    async def discovery(self, node=None, on_pair='none', timeout=3):
+    async def discovery(self, node=None, on_pair='none', timeout=10):
         """"""
         if not self.server_pairs:
             logging.warning(f"{self.name}: No connection to perform discovery.")
@@ -646,6 +646,12 @@ class ChaskiNode:
         paired = self.paired_event.is_set()
 
         return (all_ready and paired)
+
+    # ----------------------------------------------------------------------
+    def is_connected_to(self, node):
+        """"""
+        return (node.host, node.port) in [(edge.host, edge.port) for edge in self.server_pairs]
+
 
 
 
