@@ -158,7 +158,7 @@ class ChaskiNode:
         if hasattr(self, 'server'):
             self.server.close()
             try:
-                await asyncio.wait_for(self.server.wait_closed(), timeout=5.0)
+                await asyncio.wait_for(self.server.wait_closed(), timeout=5)
             except asyncio.TimeoutError:
                 logging.warning("Timeout waiting for server to close")
 
@@ -272,7 +272,7 @@ class ChaskiNode:
     # ----------------------------------------------------------------------
     async def close_connection(self, edge, port=None):
         """"""
-        await self.wait_for_all_edges_ready()
+        # await self.wait_for_all_edges_ready()
 
         if port:
             for edge_ in self.server_pairs:
@@ -304,7 +304,10 @@ class ChaskiNode:
 
             status = await self._request_status(edge.host, edge.port)
             if status.data['serving']:
-                await self.connect_to_peer(edge)
+                try:
+                    await self.connect_to_peer(edge)
+                except ConnectionRefusedError:
+                    logging.debug(f"{self.name}: Impossible to reconnect with {edge}")
 
         logging.debug(f"{self.name}: Connection to {edge} closed and removed")
 
@@ -577,7 +580,9 @@ class ChaskiNode:
 
         elif message.command == "response":
             self.request_response_multiplexer[message.data["id"]] = message
-            self.request_response_multiplexer_events[message.data["id"]].set()
+
+            if message.data["id"] in self.request_response_multiplexer_events:
+                self.request_response_multiplexer_events[message.data["id"]].set()
 
         # elif message.command == "discovery":
         # await self._process_discovery(message)
