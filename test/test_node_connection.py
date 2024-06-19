@@ -14,47 +14,10 @@ Classes:
 
 import unittest
 import asyncio
-from string import ascii_uppercase
-from typing import List, Optional
-from chaski.node import ChaskiNode
-
-PORT = 65432
-
-
-# ----------------------------------------------------------------------
-async def _create_nodes(n: int, host: str = '127.0.0.1', subscriptions: Optional[List[str]] = None) -> List[ChaskiNode]:
-    """
-    Create a list of ChaskiNode instances.
-
-    Parameters
-    ----------
-    n : int
-        Number of nodes to create.
-    subscriptions : list of str, optional
-        List of subscription topics for the nodes. If None, the first `n` letters
-        of the alphabet will be used.
-
-    Returns
-    -------
-    list of ChaskiNode
-        List of created nodes.
-    """
-    global PORT
-    if subscriptions is None:
-        subscriptions = list(ascii_uppercase)[:n]
-
-    nodes = [ChaskiNode(
-        host=host,
-        port=PORT + i,
-        name=f'Node{i}',
-        subscriptions=[sub],
-        run=True,
-        ttl=15,
-        root=(i == 0)
-    ) for i, sub in enumerate(subscriptions)]
-    PORT += n + 1
-    await asyncio.sleep(0.3)
-    return nodes
+# from string import ascii_uppercase
+# from typing import List, Optional
+# from chaski.node import ChaskiNode
+from .utils import _create_nodes, PORT
 
 
 ########################################################################
@@ -62,6 +25,12 @@ class TestConnections:
     """
     Unit tests for testing connections between ChaskiNode instances.
     """
+
+    # ----------------------------------------------------------------------
+    def _close_nodes(self, nodes):
+        """"""
+        for node in nodes:
+            node.stop()
 
     # ----------------------------------------------------------------------
     async def test_single_connections(self):
@@ -76,8 +45,9 @@ class TestConnections:
         for i in range(4):
             self.assertEqual(len(nodes[i].server_pairs), 1, f"Node {i} connection failed")
 
-    # ----------------------------------------------------------------------
+        self._close_nodes(nodes)
 
+    # ----------------------------------------------------------------------
     async def test_multiple_connections(self):
         """
         Test multiple connections to a single node.
@@ -90,6 +60,8 @@ class TestConnections:
         for i in range(1, 5):
             self.assertEqual(len(nodes[i].server_pairs), 1, f"Node {i}'s connection to Node 0 failed")
         self.assertEqual(len(nodes[0].server_pairs), 4, f"Node 0 failed to establish all connections")
+
+        self._close_nodes(nodes)
 
     # ----------------------------------------------------------------------
     async def test_disconnection(self):
@@ -107,6 +79,8 @@ class TestConnections:
         self.assertEqual(len(nodes[0].server_pairs), 0, "Node 0 not disconnected")
         for i in range(1, 5):
             self.assertEqual(len(nodes[i].server_pairs), 0, f"Node {i} not disconnected")
+
+        self._close_nodes(nodes)
 
     # ----------------------------------------------------------------------
     async def test_edges_disconnection(self):
@@ -131,6 +105,8 @@ class TestConnections:
             self.assertEqual(len(nodes[i].server_pairs), 1, f"Node {i} connections failed")
         self.assertEqual(len(nodes[4].server_pairs), 2, "Node 4 connections failed")
 
+        self._close_nodes(nodes)
+
     # ----------------------------------------------------------------------
     async def test_edges_client_orphan(self):
         """
@@ -153,6 +129,8 @@ class TestConnections:
         for i in range(1, 5):
             self.assertEqual(len(nodes[i].server_pairs), 1, f"Node {i} connections failed after orphan detection")
 
+        self._close_nodes(nodes)
+
     # ----------------------------------------------------------------------
     async def test_edges_server_orphan(self):
         """
@@ -174,6 +152,8 @@ class TestConnections:
         self.assertEqual(len(nodes[0].server_pairs), 4, "Node 0 connections failed after orphan detection")
         for i in range(1, 5):
             self.assertEqual(len(nodes[i].server_pairs), 1, f"Node {i} connections failed after orphan detection")
+
+        self._close_nodes(nodes)
 
 
 ########################################################################
