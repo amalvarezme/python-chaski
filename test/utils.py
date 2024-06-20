@@ -1,5 +1,3 @@
-import subprocess
-import psutil
 from chaski.node import ChaskiNode
 from typing import List, Optional
 import asyncio
