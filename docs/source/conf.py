@@ -52,3 +52,50 @@ html_theme_options = {
 dunderlab_color_links = '#4EAE8B'
 dunderlab_code_reference = True
 dunderlab_github_repository = "https://github.com/dunderlab/python-chaski"
+
+
+# -- Include documentation from docstrings -----------------------------------
+# https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html#module-sphinx.ext.autodoc
+
+# The default options for autodoc directives. They are applied to all autodoc directives automatically.
+# Setting None or True to the value is equivalent to giving only the option name to the directives.
+autodoc_default_options = {
+    'members': None,  # Include members of the module (classes, functions, etc.)
+    'undoc-members': None,  # Include members that are not documented
+    'private-members': False,  # Include private members (those starting with an underscore _)
+    'special-members': False,  # Include special members (e.g., __init__, __repr__)
+    # 'imported-members': None,  # Include members imported from other modules
+    'inherited-members': None,  # Include inherited members
+    'show-inheritance': None,  # Show the inheritance diagram
+    'ignore-module-all': False,  # Ignore the __all__ attribute of the module
+    # 'exclude-members': '__weakref__',  # Exclude specific members
+}
+
+# Uncomment one of the following lines to set the desired behavior for class content
+autoclass_content = 'class'  # Only the class’ docstring is inserted (default)
+# autoclass_content = 'both'  # Both the class’ and the __init__ method’s docstring are concatenated and inserted
+# autoclass_content = 'init'  # Only the __init__ method’s docstring is inserted
+
+# Uncomment one of the following lines to set the desired display for class signatures
+autodoc_class_signature = 'mixed'  # Display the signature with the class name (default)
+# autodoc_class_signature = 'separated'  # Display the signature as a method
+
+# Uncomment one of the following lines to set the desired order for documented members
+autodoc_member_order = 'alphabetical'  # Members are sorted alphabetically (default)
+# autodoc_member_order = 'groupwise'  # Members are sorted by member type
+# autodoc_member_order = 'bysource'  # Members are sorted by the order in the source code
+
+# Uncomment one of the following lines to set the desired behavior for typehints
+autodoc_typehints = 'signature'  # Show typehints in the signature (default)
+# autodoc_typehints = 'description'  # Show typehints as content of the function or method
+# autodoc_typehints = 'none'  # Do not show typehints
+# autodoc_typehints = 'both'  # Show typehints in the signature and as content of the function or method
+
+# Uncomment one of the following lines to set the desired behavior for documenting types of undocumented parameters and return values
+autodoc_typehints_description_target = 'all'  # Types are documented for all parameters and return values (default)
+# autodoc_typehints_description_target = 'documented'  # Types are documented only for parameters or return values that are already documented by the docstring
+# autodoc_typehints_description_target = 'documented_params'  # Parameter types are annotated if documented in the docstring; return type is always annotated (except if None)
+
+# Uncomment one of the following lines to set the desired format for typehints
+autodoc_typehints_format = 'short'  # Suppress the leading module names of the typehints (default)
+# autodoc_typehints_format = 'fully-qualified'  # Show the module name and its name of typehints

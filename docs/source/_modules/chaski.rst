@@ -6,6 +6,14 @@ chaski package
    :undoc-members:
    :show-inheritance:
 
+Subpackages
+-----------
+
+.. toctree::
+   :maxdepth: 4
+
+   chaski.utils
+
 Submodules
 ----------
 
