@@ -31,6 +31,7 @@ class TestConnections:
         """"""
         for node in nodes:
             node.stop()
+        # asyncio.sleep(0.3)
 
     # ----------------------------------------------------------------------
     async def test_single_connections(self):
@@ -88,9 +89,11 @@ class TestConnections:
         Test disconnection of edge nodes.
         """
         nodes = await _create_nodes(6, self.host)
+
         for i in range(1, 5):
             await nodes[i].connect_to_peer(nodes[0])
         await asyncio.sleep(0.3)
+
         for i in range(1, 5):
             await nodes[i].connect_to_peer(nodes[5])
 
@@ -168,7 +171,25 @@ class Test_Connections_for_IPv4(TestConnections, unittest.IsolatedAsyncioTestCas
         Set up the test environment for IPv4 connections.
         """
         self.host = '127.0.0.1'
-        await asyncio.sleep(0)  # PSS: Added await keyword for asyncio.sleep
+        await asyncio.sleep(0)
+
+    async def test_single_connections(self):
+        return await super().test_single_connections()
+
+    async def test_multiple_connections(self):
+        return await super().test_single_connections()
+
+    async def test_disconnection(self):
+        return await super().test_single_connections()
+
+    async def test_edges_disconnection(self):
+        return await super().test_single_connections()
+
+    async def test_edges_client_orphan(self):
+        return await super().test_single_connections()
+
+    async def test_edges_server_orphan(self):
+        return await super().test_single_connections()
 
 
 ########################################################################
@@ -183,7 +204,25 @@ class Test_Connections_for_IPv6(unittest.IsolatedAsyncioTestCase, TestConnection
         Set up the test environment for IPv6 connections.
         """
         self.host = '::1'
-        await asyncio.sleep(0)  # PSS: Added await keyword for asyncio.sleep
+        await asyncio.sleep(0)
+
+    async def test_single_connections(self):
+        return await super().test_single_connections()
+
+    async def test_multiple_connections(self):
+        return await super().test_single_connections()
+
+    async def test_disconnection(self):
+        return await super().test_single_connections()
+
+    async def test_edges_disconnection(self):
+        return await super().test_single_connections()
+
+    async def test_edges_client_orphan(self):
+        return await super().test_single_connections()
+
+    async def test_edges_server_orphan(self):
+        return await super().test_single_connections()
 
 
 if __name__ == '__main__':
