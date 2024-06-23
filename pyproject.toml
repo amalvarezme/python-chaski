@@ -35,3 +35,10 @@ include = ["chaski"]
 
 [project.scripts]
 radiant_p4a = "cmd/flush_port.sh"
+
+[project.optional-dependencies]
+dev = [
+    "networkx",
+    "matplotlib"
+    ]
+docs = []
