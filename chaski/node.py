@@ -12,7 +12,6 @@ import pickle
 import random
 import socket
 import traceback
-from collections import namedtuple
 from dataclasses import dataclass, field
 from datetime import datetime
 from functools import cached_property
@@ -369,14 +368,32 @@ class ChaskiNode:
                 logger_main.warning("Timeout waiting for server to close.")
 
     # ----------------------------------------------------------------------
-    async def connect_to_peer(
+    async  def connect_to_peer(
         self,
         node: 'ChaskiNode',
         peer_port: Optional[int] = None,
         paired: bool = False,
         data: dict = {}
     ) -> None:
-        """"""
+        """
+        Asynchronously establish a TCP connection to a peer node.
+
+        Initiate a TCP connection to the specified peer node. If a connection is already established, or if
+        the target node is the same as the current one, the function will produce a warning and not proceed
+        further. This function also supports marking a connection as 'paired', updating corresponding
+        state information about the peer node.
+
+        Parameters
+        ----------
+        node : 'ChaskiNode'
+            The target node instance or the host string to connect to.
+        peer_port : Optional[int]
+            The port number of the target node if the `node` parameter is not a `ChaskiNode` instance.
+        paired : bool
+            Flag indicating whether the connection should be marked as 'paired'.
+        data : dict
+            Additional data to include in the `report_paired` command if the connection is paired.
+        """
         if hasattr(node, "host"):
             peer_host, peer_port = node.host, node.port
         else:
@@ -417,7 +434,13 @@ class ChaskiNode:
 
     # ----------------------------------------------------------------------
     async def wait_for_all_edges_ready(self) -> None:
-        """"""
+        """
+        Wait until all server edges have complete connection information.
+
+        This asynchronous method loops until each server edge within the server_pairs list has its host, port,
+        and name properties set, which indicates that they are ready and fully connected. This readiness is
+        essential before performing network-wide operations such as discovery.
+        """
         logger_main.debug(f"Waiting for all connections to node {self.name} to be ready.")
         if not self.server_pairs:
             return
@@ -430,7 +453,13 @@ class ChaskiNode:
 
     # ----------------------------------------------------------------------
     async def wait_for_ready(self) -> None:
-        """"""
+        """
+        Wait for the node to become ready.
+
+        This coroutine blocks until the ChaskiNode is ready, which is determined by the event flagged by
+        the `paired_event` and the readiness of server pairs. A node is considered ready when it has been
+        paired and all server pair connections are established with complete host, port, and name information.
+        """
         while True:
             if self.ready():
                 break
@@ -498,7 +527,23 @@ class ChaskiNode:
 
     # ----------------------------------------------------------------------
     async def close_connection(self, edge: Edge, port: Optional[int] = None) -> None:
-        """"""
+        """
+        Close the connection associated with a given edge, optionally specifying a port.
+
+        This coroutine handles the termination of a network connection that corresponds to the provided edge. If a port number
+        is specified, the connection to that port will be closed. All resources associated with the connection, such as stream
+        writers, are properly finalized. If the current node ends up without any connections, a warning is logged, and an
+        attempt to reconnect is made.
+
+        Parameters
+        ----------
+        edge : Edge
+            The edge object representing the network connection to be closed. If a port is specified, only the connection
+            to that port is closed.
+        port : Optional[int]
+            An optional port number to specifically close the connection to. If None, all connections associated with the
+            edge are closed.
+        """
         # self.wait_for_all_edges_ready()
         if port:
             for edge_ in self.server_pairs:
@@ -539,7 +584,19 @@ class ChaskiNode:
 
     # ----------------------------------------------------------------------
     async def connected(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
-        """"""
+        """
+        Handle an incoming TCP connection.
+
+        This coroutine is called when a new TCP connection is established. It will create a new Edge
+        instance representing this connection and start listening to incoming messages from the peer.
+
+        Parameters
+        ----------
+        reader : asyncio.StreamReader
+            The StreamReader object to read data from the connection.
+        writer : asyncio.StreamWriter
+            The StreamWriter object to write data to the connection.
+        """
         edge = Edge(writer=writer, reader=reader)
 
         logger_main.debug(f"{self.name}: Accepted connection from {writer.get_extra_info('peername')}.")
@@ -558,7 +615,21 @@ class ChaskiNode:
 
     # ----------------------------------------------------------------------
     async def _reader_loop(self, edge: Edge) -> None:
-        """"""
+        """
+        Listen and process messages from a given edge in the network.
+
+        This asynchronous method is the main loop for managing incoming messages
+        from the connected peer node represented by the provided 'edge'. It constantly
+        reads data from the StreamReader of the edge until the connection is closed, or
+        an error is encountered. It handles framing, deserialization, and dispatching
+        of the messages using the '_process_message' coroutine for further handling.
+
+        Parameters
+        ----------
+        edge : Edge
+            The network edge (connection) object from which the messages are read and
+            processed. It contains the StreamReader and StreamWriter for network I/O.
+        """
         try:
             while True:
                 length_data = await edge.reader.readexactly(4)
@@ -595,7 +666,21 @@ class ChaskiNode:
 
     # ----------------------------------------------------------------------
     async def _process_message(self, message: Message, edge: Edge) -> None:
-        """"""
+        """
+        Asynchronously process a received message and invoke the appropriate handler.
+
+        This method acts as a dispatcher, delegating the received message to a specific method
+        based on the command of the message. It utilizes dynamic method resolution to determine
+        the handler for each command. If no specific handler is found for the command, a warning
+        is logged indicating the missing processor.
+
+        Parameters
+        ----------
+        message : Message
+            The received message containing a command, associated data, and a timestamp.
+        edge : Edge
+            The network edge (connection) associated with the message source.
+        """
         if processor := getattr(self, f"_process_{message.command}", None):
             logger_main.debug(f"{self.name}: Processing the '{message.command}' command.")
             await processor(message, edge)
@@ -1083,7 +1168,14 @@ class ChaskiNode:
 
     # ----------------------------------------------------------------------
     async def remove_duplicated_connections(self) -> None:
-        """"""
+        """
+        Remove duplicate connections from the server pairs.
+
+        Iterates over the list of server pairs and closes connections that have
+        the same host and port as an already seen connection. This ensures that each
+        peer is connected to the node only once, avoiding redundant connections.
+
+        """
         seen_connections = set()
         for edge in self.server_pairs:
 
@@ -1099,7 +1191,17 @@ class ChaskiNode:
 
     # ----------------------------------------------------------------------
     def ready(self) -> bool:
-        """"""
+        """
+        Determine if the ChaskiNode is ready based on the readiness of server pairs and pairing status.
+
+        A ChaskiNode is considered ready when all of its server pairs have complete host, port, and name
+        information, and the node has been successfully paired within the network.
+
+        Returns
+        -------
+        bool
+            True if all server pairs are fully connected and the node is paired, False otherwise.
+        """
         all_ready = all(edge.host and edge.port and edge.name for edge in self.server_pairs)
         paired = self.paired_event.is_set()
 
@@ -1107,6 +1209,23 @@ class ChaskiNode:
 
     # ----------------------------------------------------------------------
     def is_connected_to(self, node: 'ChaskiNode') -> bool:
-        """"""
+        """
+        Check if this node is connected to another specified node.
+
+        Determines whether the current ChaskiNode instance has an established TCP connection
+        with the given node. It checks the server pairs list for a matching host and port
+        pair to confirm connectivity.
+
+        Parameters
+        ----------
+        node : ChaskiNode
+            The node to check for connectivity with the current node.
+
+        Returns
+        -------
+        bool
+            `True` if the current node is connected to the specified node; otherwise, `False`.
+
+        """
         return (node.host, node.port) in [(edge.host, edge.port) for edge in self.server_pairs]
 
