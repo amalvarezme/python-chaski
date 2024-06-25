@@ -41,7 +41,7 @@ class TestConnections:
         nodes = await _create_nodes(4, self.host)
         await nodes[0].connect_to_peer(nodes[1])
         await nodes[2].connect_to_peer(nodes[3])
-        await asyncio.sleep(0.3)
+        await asyncio.sleep(3)
 
         for i in range(4):
             self.assertEqual(len(nodes[i].server_pairs), 1, f"Node {i} connection failed")

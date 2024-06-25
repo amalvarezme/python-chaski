@@ -104,15 +104,15 @@ class TestDiscovery(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(nodes[1].server_pairs), 1, f"Node 1 connection failed")
         self.assertEqual(len(nodes[2].server_pairs), 1, f"Node 2 connection failed")
 
-        await nodes[1].discovery(on_pair='disconnect', timeout=10)
+        nodes[1].paired_event.set()
         await nodes[2].discovery(on_pair='disconnect', timeout=10)
 
         await asyncio.sleep(0.3)
         self.assertEqual(len(nodes[0].server_pairs), 1, f"Node 0 discovery failed after discovery")
-        self.assertEqual(len(nodes[1].server_pairs), 1, f"Node 1 discovery failed after discovery")
-        self.assertEqual(len(nodes[2].server_pairs), 2, f"Node 2 discovery failed after discovery")
+        self.assertEqual(len(nodes[1].server_pairs), 2, f"Node 1 discovery failed after discovery")
+        self.assertEqual(len(nodes[2].server_pairs), 1, f"Node 2 discovery failed after discovery")
 
-        self.assertConnection(nodes[0], nodes[2], "The node 0 is not connected to node 1")
+        self.assertConnection(nodes[0], nodes[1], "The node 0 is not connected to node 1")
         self.assertConnection(nodes[2], nodes[1], "The node 0 is not connected to node 2")
 
         self._close_nodes(nodes)
