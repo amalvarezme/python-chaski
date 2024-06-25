@@ -1,10 +1,20 @@
+"""
+==============
+Visualizations
+==============
+
+This module provides functions for visualizing the network graph and latency heatmap of ChaskiNode objects.
+It uses `networkx` and `matplotlib` to render the network graph, which displays nodes, connections, and
+latency values. A heatmap of latencies between nodes is created using `seaborn` to help in identifying
+patterns and high-latency connections.
+"""
+
 import networkx as nx
 import matplotlib.pyplot as plt
 import numpy as np
 from typing import List
 from chaski.node import ChaskiNode
 import seaborn as sns
-
 
 # ----------------------------------------------------------------------
 def display_graph(nodes: List[ChaskiNode]) -> None:
@@ -15,10 +25,6 @@ def display_graph(nodes: List[ChaskiNode]) -> None:
     ----------
     nodes : List[Node]
         A list of nodes, each containing name and server pairs.
-
-    Returns
-    -------
-    None
     """
     G = nx.Graph()
 
@@ -51,19 +57,22 @@ def display_graph(nodes: List[ChaskiNode]) -> None:
 
     ax2 = plt.subplot2grid((3, 5), (2, 4), colspan=1)
 
-    # Collect latencies for statistics
-    latencies = [peer.latency for node in nodes for peer in node.server_pairs]
+    if node.server_pairs:
 
-    # Log statistics
-    log = f"""
-    nodes: {len(nodes)}
-    ready: {sum(node.ready() for node in nodes)}/{len(nodes)}
-    connections: {0.5 * sum(len(node.server_pairs) for node in nodes): .0f}
-    max(latency): {np.max(latencies): .3f} ms
-    min(latency): {np.min(latencies): .3f} ms
-    mean(latency): {np.mean(latencies): .3f} ms
-    std(latency): {np.std(latencies): .3f} ms
-    """
+        # Collect latencies for statistics
+        latencies = [peer.latency for node in nodes for peer in node.server_pairs]
+
+        # Log statistics
+        log = f"""
+        nodes: {len(nodes)}
+        connections: {0.5 * sum(len(node.server_pairs) for node in nodes): .0f}
+        max(latency): {np.max(latencies): .3f} ms
+        min(latency): {np.min(latencies): .3f} ms
+        mean(latency): {np.mean(latencies): .3f} ms
+        std(latency): {np.std(latencies): .3f} ms
+        """
+    else:
+        log = ""
 
     # Display log statistics
     font_options = {
@@ -124,7 +133,6 @@ def display_heatmap(nodes: List[ChaskiNode], show=True) -> None:
     plt.title('Latency Heatmap')
     # plt.xlabel('Nodes')
     # plt.ylabel('Nodes')
-
     plt.show()
 
 
