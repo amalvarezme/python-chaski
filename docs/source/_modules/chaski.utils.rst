@@ -1,5 +1,5 @@
-chaski.utils package
-====================
+
+
 
 .. automodule:: chaski.utils
    :members:

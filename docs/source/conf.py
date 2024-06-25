@@ -99,3 +99,21 @@ autodoc_typehints_description_target = 'all'  # Types are documented for all par
 # Uncomment one of the following lines to set the desired format for typehints
 autodoc_typehints_format = 'short'  # Suppress the leading module names of the typehints (default)
 # autodoc_typehints_format = 'fully-qualified'  # Show the module name and its name of typehints
+
+
+# autodoc_mock_imports
+# This value contains a list of modules to be mocked up. This is useful when some external dependencies
+# are not met at build time and break the building process. You may only specify the root package of
+# the dependencies themselves and omit the sub-modules.
+autodoc_mock_imports = [
+    # Uncomment the modules you need to mock
+    "numpy",
+    # "pandas",
+    "matplotlib",
+    "seaborn",
+    "networkx",
+]
+
+
+def setup(app):
+    app.add_css_file('custom_chaski.css')
