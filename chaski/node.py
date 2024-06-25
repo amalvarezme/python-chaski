@@ -1,7 +1,22 @@
 """
-==========
-ChaskiNode
-==========
+=========================================================
+ChaskiNode: Distributed Node Communication and Management
+=========================================================
+
+This module defines the ChaskiNode class and its associated classes for managing network communication
+between distributed nodes. It provides a framework for creating Nodes which can connect to each other
+over TCP/IP, handle messaging and serialization of data, and perform network-wide functions, such as
+discovery and pairing of nodes based on shared subscriptions.
+
+Classes
+=======
+
+    - *Edge*: Represents a connection to a peer in the network, managing the input/output streams and storing
+      metadata such as latency, jitter, and subscription topics.
+    - *Message*: A container class for messages, packing together the command, data, and timestamp information.
+    - *UDPProtocol*: An asyncio protocol class for handling UDP packets, interfacing with the asyncio Datagram Protocol.
+    - *ChaskiNode*: The main class representing a node in the network, which can initiate connections, handle incoming
+      requests, and orchestrate network-wide actions.
 
 """
 
@@ -11,6 +26,7 @@ import os
 import pickle
 import random
 import socket
+import time
 import traceback
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -169,6 +185,7 @@ class Message:
 
 
 ########################################################################
+@dataclass
 class UDPProtocol(asyncio.DatagramProtocol):
     """
     An asyncio protocol class for processing UDP packets.
@@ -177,30 +194,8 @@ class UDPProtocol(asyncio.DatagramProtocol):
     methods providing core functionality for sending, receiving, and effectively managing
     UDP connections.
     """
-
-    # ----------------------------------------------------------------------
-    def __init__(self, node: 'ChaskiNode', on_message_received: Awaitable[None]):
-        """
-        Initialize the UDP protocol with a reference to the parent node and the message receive callback.
-
-        Provides initialization for the UDPProtocol instance by setting up a reference to the ChaskiNode
-        which uses the protocol, and setting the callback function that is called upon message reception.
-        This method is critical for establishing the protocol's behavior in the context of the node it serves.
-
-        Parameters
-        ----------
-        node : 'ChaskiNode'
-            The ChaskiNode instance that this protocol is associated with. It acts as the parent node
-            which contains all the relevant context and state necessary for handling UDP communication.
-        on_message_received : Callable[[bytes, Tuple[str, int]], Awaitable[None]]
-            A callback function that is invoked when a new message is received via the UDP protocol.
-            The function should be an asynchronous function that takes two parameters: a bytes object
-            containing the raw message data and a tuple containing the sender's address as a string
-            and the port number as an integer.
-
-        """
-        self.node = node
-        self.on_message_received = on_message_received
+    node: 'ChaskiNode'
+    on_message_received: Awaitable
 
     # ----------------------------------------------------------------------
     def datagram_received(self, message: bytes, addr: tuple[str, int]) -> None:
@@ -316,7 +311,10 @@ class ChaskiNode:
         self.server_pairs = []
         self.paired_event = asyncio.Event()
         self.lock = asyncio.Lock()
+        self.lock_pair = asyncio.Lock()
+        self.lock_disconnect = asyncio.Lock()
         self.ping_events = {}
+        self.handshake_events = {}
 
         if root:
             self.paired_event.set()
@@ -403,7 +401,7 @@ class ChaskiNode:
             logger_main.warning(f"{self.name}: Impossible to connect a node to itself.")
             return
 
-        await self.wait_for_all_edges_ready()
+        # await self.wait_for_all_edges_ready()
 
         if (peer_host, peer_port, False) in [(edge.host, edge.port, edge.writer.is_closing()) for edge in self.server_pairs]:
             logger_main.warning(f"{self.name}: Already connected with this node.")
@@ -417,8 +415,8 @@ class ChaskiNode:
         reader, writer = await asyncio.open_connection(peer_host, peer_port, family=family)
         edge = Edge(writer=writer, reader=reader)
 
-        async with self.lock:
-            self.server_pairs.append(edge)
+        # async with self.lock:
+            # self.server_pairs.append(edge)
 
         if paired:
             data['paired'] = paired
@@ -430,40 +428,41 @@ class ChaskiNode:
 
         logger_main.debug(f"{self.name}: New connection with {edge.address}.")
         asyncio.create_task(self._reader_loop(edge))
-        await self._ping(edge, response=True, latency_update=False)
+        await self._handshake(edge, response=True)
 
-    # ----------------------------------------------------------------------
-    async def wait_for_all_edges_ready(self) -> None:
-        """
-        Wait until all server edges have complete connection information.
+    # # ----------------------------------------------------------------------
+    # async def wait_for_all_edges_ready(self) -> None:
+        # """
+        # Wait until all server edges have complete connection information.
 
-        This asynchronous method loops until each server edge within the server_pairs list has its host, port,
-        and name properties set, which indicates that they are ready and fully connected. This readiness is
-        essential before performing network-wide operations such as discovery.
-        """
-        logger_main.debug(f"Waiting for all connections to node {self.name} to be ready.")
-        if not self.server_pairs:
-            return
-        while True:
-            all_ready = all(edge.host and edge.port and edge.name for edge in self.server_pairs)
-            if all_ready:
-                logger_main.debug(f"Node {self.name} is ready.")
-                break
-            await asyncio.sleep(0.1)
+        # This asynchronous method loops until each server edge within the server_pairs list has its host, port,
+        # and name properties set, which indicates that they are ready and fully connected. This readiness is
+        # essential before performing network-wide operations such as discovery.
+        # """
+        # logger_main.debug(f"Waiting for all connections to node {self.name} to be ready.")
+        # if not self.server_pairs:
+            # return
+        # # t0 = time.time()
+        # while True:
+            # all_ready = all(bool(edge.host and edge.port and edge.name) for edge in self.server_pairs)
+            # if all_ready:
+                # logger_main.debug(f"Node {self.name} is ready.")
+                # break
+            # await asyncio.sleep(0.1)
 
-    # ----------------------------------------------------------------------
-    async def wait_for_ready(self) -> None:
-        """
-        Wait for the node to become ready.
+    # # ----------------------------------------------------------------------
+    # async def wait_for_ready(self) -> None:
+        # """
+        # Wait for the node to become ready.
 
-        This coroutine blocks until the ChaskiNode is ready, which is determined by the event flagged by
-        the `paired_event` and the readiness of server pairs. A node is considered ready when it has been
-        paired and all server pair connections are established with complete host, port, and name information.
-        """
-        while True:
-            if self.ready():
-                break
-            await asyncio.sleep(0.1)
+        # This coroutine blocks until the ChaskiNode is ready, which is determined by the event flagged by
+        # the `paired_event` and the readiness of server pairs. A node is considered ready when it has been
+        # paired and all server pair connections are established with complete host, port, and name information.
+        # """
+        # while True:
+            # if self.ready():
+                # break
+            # await asyncio.sleep(0.1)
 
     # ----------------------------------------------------------------------
     async def discovery(self, node: Optional['ChaskiNode'] = None, on_pair: Union[str, Literal['none', 'disconnect']] = 'none', timeout: int = 10) -> None:
@@ -485,6 +484,9 @@ class ChaskiNode:
             The maximum time in seconds to wait for the discovery process to complete before
             considering the node as paired. Defaults to 10 seconds.
         """
+        # self.name
+        self.paired_event.clear()
+
         if not self.server_pairs:
             logger_main.warning(f"{self.name}: No connection to perform discovery.")
             return
@@ -521,8 +523,13 @@ class ChaskiNode:
             writer=node.writer,
         )
 
-        await asyncio.sleep(timeout)
-        logger_main.warning(f"{self.name}: Timeout reached during discovery process node is considered paired.")
+        t0 = time.time()
+        while time.time() < t0 + timeout:
+            await asyncio.sleep(0.1)
+            if self.paired_event.is_set():
+                break
+        if time.time() > t0 + timeout:
+            logger_main.warning(f"{self.name}: Timeout reached during discovery process node is considered paired.")
         self.paired_event.set()
 
     # ----------------------------------------------------------------------
@@ -544,43 +551,56 @@ class ChaskiNode:
             An optional port number to specifically close the connection to. If None, all connections associated with the
             edge are closed.
         """
-        # self.wait_for_all_edges_ready()
-        if port:
-            for edge_ in self.server_pairs:
-                if (edge_.host == edge) and (edge_.port == port):
-                    edge = edge_
-                    break
 
-        if not isinstance(edge, Edge):
-            logger_main.warning(f"{self.name}: The provided object '{edge}' is not a valid 'Edge' instance.")
-            return
-        logger_main.debug(f"{self.name}: The connection with {edge} will be removed.")
+        # await self._remove_dead_connection()
+        # await self.wait_for_all_edges_ready()
 
-        logger_main.debug(f"{self.name}: Closing connection to {edge.address}.")
-        if not edge.writer.is_closing():
-            edge.writer.close()
-            try:
-                await asyncio.wait_for(edge.writer.wait_closed(), 1)
-            except asyncio.TimeoutError:
-                logger_main.debug(f"{self.name}: Timeout occurred while closing connection to {edge}.")
+        async with self.lock_disconnect:
 
-        async with self.lock:
-            self.server_pairs = [
-                edge_ for edge_ in self.server_pairs if edge_ != edge
-            ]
+            self.name
+            self.server_pairs
 
-        if len(self.server_pairs) == 0 and not self.server_closing:
-            logger_main.warning(f"{self.name}: Orphan node detected.")
-            logger_main.warning(f"{self.name}: Retrying connection.")
+            if port:
+                for edge_ in self.server_pairs:
+                    if (edge_.host == edge) and (edge_.port == port):
+                        edge = edge_
+                        break
 
-            status = await self._request_status(edge.host, edge.port)
-            if status.data['serving']:
+            if not bool(edge.host and edge.port and edge.name):
+                self.name
+
+            if not isinstance(edge, Edge):
+                logger_main.warning(f"{self.name}: The provided object '{edge}' is not a valid 'Edge' instance.")
+                return
+            logger_main.debug(f"{self.name}: The connection with {edge} will be removed.")
+
+            logger_main.debug(f"{self.name}: Closing connection to {edge.address}.")
+            if not edge.writer.is_closing():
+                edge.writer.close()
                 try:
-                    await self.connect_to_peer(edge)
-                except ConnectionRefusedError:
-                    logger_main.warning(f"{self.name}: Unable to reconnect with {edge}")
+                    await asyncio.wait_for(edge.writer.wait_closed(), 1)
+                except asyncio.TimeoutError:
+                    logger_main.debug(f"{self.name}: Timeout occurred while closing connection to {edge}.")
+                except Exception as e:
+                    e
 
-        logger_main.debug(f"{self.name}: Connection to {edge} has been closed and removed.")
+            async with self.lock:
+                self.server_pairs = [
+                    edge_ for edge_ in self.server_pairs if edge_ != edge
+                ]
+
+            # if len(self.server_pairs) == 0 and not self.server_closing:
+                # logger_main.warning(f"{self.name}: Orphan node detected.")
+                # logger_main.warning(f"{self.name}: Retrying connection.")
+
+                # status = await self._request_status(edge.host, edge.port)
+                # if status.data['serving']:
+                    # try:
+                        # await self.connect_to_peer(edge)
+                    # except ConnectionRefusedError:
+                        # logger_main.warning(f"{self.name}: Unable to reconnect with {edge}")
+
+            logger_main.debug(f"{self.name}: Connection to {edge} has been closed and removed.")
 
     # ----------------------------------------------------------------------
     async def connected(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
@@ -603,15 +623,15 @@ class ChaskiNode:
         logger_main.debug(f"{self.name}: New connection with {edge.address}.")
         asyncio.create_task(self._reader_loop(edge))
 
-        await self.wait_for_all_edges_ready()
+        # await self.wait_for_all_edges_ready()
 
         if (edge.host, edge.port, False) in [(edge_.host, edge_.port, edge_.writer.is_closing()) for edge_ in self.server_pairs]:
             logger_main.debug(f"{self.name}: Already connected with this node.")
             await self.close_connection(edge)
             return
 
-        async with self.lock:
-            self.server_pairs.append(edge)
+        # async with self.lock:
+            # self.server_pairs.append(edge)
 
     # ----------------------------------------------------------------------
     async def _reader_loop(self, edge: Edge) -> None:
@@ -662,6 +682,10 @@ class ChaskiNode:
         finally:
             logger_main.warning(f"{self.name}: Closing connection with {edge}")
             logger_main.error(f"{self.name}: An exception occurred: \n{traceback.format_exc()}")
+
+            await self._remove_closing_connection()
+            # await self._remove_dead_connection()
+            # await asyncio.sleep(0.1)
             await self.close_connection(edge)
 
     # ----------------------------------------------------------------------
@@ -701,17 +725,27 @@ class ChaskiNode:
         edge : Edge
             The edge from which the 'report_paired' message was received. It provides context for where to apply the action specified in the message data.
         """
-        if message.data["paired"]:
 
-            match message.data['on_pair']:
-                case 'none':
-                    pass
-                case 'disconnect':
-                    logger_main.debug(f"{self.name}: Disconnected after pairing with {message.data['root_host']} {message.data['root_port']}.")
-                    await self.close_connection(message.data['root_host'], message.data['root_port'])
+        async with self.lock_pair:
 
-            logger_main.debug(f"{self.name}: Node is successfully paired.")
-            self.paired_event.set()
+            if self.paired_event.is_set():
+                logger_main.debug(f"{self.name}: Node is already paired, clossing conexxxxxion")
+                await self.close_connection(edge)
+                # await self._remove_dead_connection()
+                return
+
+            if message.data["paired"]:
+                match message.data['on_pair']:
+                    case 'none':
+                        pass
+                    case 'disconnect':
+                        logger_main.debug(f"{self.name}: Disconnected after pairing with {message.data['root_host']} {message.data['root_port']}.")
+                        await self.close_connection(message.data['root_host'], message.data['root_port'])
+
+                logger_main.debug(f"{self.name}: Node is successfully paired.")
+                self.paired_event.set()
+                # await self._remove_dead_connection()
+
 
     # ----------------------------------------------------------------------
     async def _start_tcp_server(self) -> None:
@@ -913,6 +947,53 @@ class ChaskiNode:
         await asyncio.sleep(0)
 
     # ----------------------------------------------------------------------
+    async def _handshake(self, server_edge: Edge, delay: float = 0, response: bool = False):
+        """"""
+        await asyncio.sleep(delay)
+
+        id_ = self._gen_id()
+        self.handshake_events[id_] = server_edge
+
+        await self._write(
+            command='handshake',
+            data={
+                "handshake_id": id_,
+                'response': response,
+                },
+            writer=server_edge.writer,
+        )
+
+    # ----------------------------------------------------------------------
+    async def _process_handshake(self, message: Message, edge: Edge) -> None:
+        """"""
+        data = {
+            "name": self.name,
+            "host": self.host,
+            "port": self.port,
+            "suscriptions": self.suscriptions,
+            "handshake_id": message.data["handshake_id"],
+        }
+
+        if message.data["response"]:
+            await self._handshake(edge, delay=0.1)
+
+        await self._write(command="handshake_back", data=data, writer=edge.writer)
+
+    # ----------------------------------------------------------------------
+    async def _process_handshake_back(self, message: Message, edge: Edge) -> None:
+        """"""
+        server_edge = self.handshake_events.pop(message.data["handshake_id"])
+        server_edge.name = message.data["name"]
+        server_edge.host = message.data["host"]
+        server_edge.port = message.data["port"]
+        server_edge.subscriptions = message.data["suscriptions"]
+
+        async with self.lock:
+            self.server_pairs.append(server_edge)
+
+        await asyncio.sleep(0)
+
+    # ----------------------------------------------------------------------
     async def _process_discovery(self, message: Message, edge: Optional[Edge] = None) -> None:
         """
         Processes a network discovery message and propagates it if necessary.
@@ -932,6 +1013,10 @@ class ChaskiNode:
             The edge where the discovery message was received from. It may be used to avoid
             sending the discovery message back to the sender. Defaults to None.
         """
+
+        if not self.paired_event.is_set():
+            return
+
         status = await self._request_status(
             message.data["origin_host"],
             message.data["origin_port"],
@@ -956,7 +1041,12 @@ class ChaskiNode:
             new_data["previous_node"] = self.name
             new_data["ttl"] = message.data["ttl"] - 1
 
-            await self.wait_fo_ready()
+            # await self.wait_for_ready()
+            # if not self.ready():
+                # logger_main.warning(f'{self.name} is not ready.')
+                # self.ready()
+                # return
+
             if self.name in message.data['visited']:
                 logger_main.debug(f"{self.name}: This branch has already been visited: {message.data['visited']}.")
                 return
@@ -990,6 +1080,17 @@ class ChaskiNode:
                 edge for edge in self.server_pairs if not edge.writer.is_closing()
             ]
         logger_main.debug(f"{self.name}: Removed a closing connection.")
+
+
+    # # ----------------------------------------------------------------------
+    # async def _remove_dead_connection(self) -> None:
+        # """"""
+        # async with self.lock:
+            # self.server_pairs = [
+                # edge for edge in self.server_pairs if edge.name
+            # ]
+        # logger_main.debug(f"{self.name}: Removed a dead connection.")
+
 
     # ----------------------------------------------------------------------
     async def _start_udp_server(self) -> None:
@@ -1189,23 +1290,24 @@ class ChaskiNode:
                 await self.close_connection(edge)
                 logger_main.debug(f"{self.name}: Closed a duplicate connection to {connection}.")
 
-    # ----------------------------------------------------------------------
-    def ready(self) -> bool:
-        """
-        Determine if the ChaskiNode is ready based on the readiness of server pairs and pairing status.
+    # # ----------------------------------------------------------------------
+    # def ready(self) -> bool:
+        # """
+        # Determine if the ChaskiNode is ready based on the readiness of server pairs and pairing status.
 
-        A ChaskiNode is considered ready when all of its server pairs have complete host, port, and name
-        information, and the node has been successfully paired within the network.
+        # A ChaskiNode is considered ready when all of its server pairs have complete host, port, and name
+        # information, and the node has been successfully paired within the network.
 
-        Returns
-        -------
-        bool
-            True if all server pairs are fully connected and the node is paired, False otherwise.
-        """
-        all_ready = all(edge.host and edge.port and edge.name for edge in self.server_pairs)
-        paired = self.paired_event.is_set()
+        # Returns
+        # -------
+        # bool
+            # True if all server pairs are fully connected and the node is paired, False otherwise.
+        # """
+        # self.name
+        # all_ready = all(bool(edge.host and edge.port and edge.name) for edge in self.server_pairs)
+        # paired = self.paired_event.is_set()
 
-        return (all_ready and paired)
+        # return (all_ready and paired)
 
     # ----------------------------------------------------------------------
     def is_connected_to(self, node: 'ChaskiNode') -> bool:
