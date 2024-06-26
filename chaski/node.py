@@ -305,7 +305,7 @@ class ChaskiNode:
         self.deserializer = deserializer
         self.server = None
         self.ttl = ttl
-        self.suscriptions = set(subscriptions)
+        self.subscriptions = set(subscriptions)
         self.name = f"{name}"
         self.parent_node = None
         self.server_pairs = []
@@ -452,7 +452,6 @@ class ChaskiNode:
             The maximum time in seconds to wait for the discovery process to complete before
             considering the node as paired. Defaults to 10 seconds.
         """
-        # self.name
         self.paired_event.clear()
 
         if not self.server_pairs:
@@ -460,7 +459,7 @@ class ChaskiNode:
             return
 
         for edge in self.server_pairs:
-            if edge.subscriptions.intersection(self.suscriptions):
+            if edge.subscriptions.intersection(self.subscriptions):
                 logger_main.warning(f"{self.name}: The node is already paired.")
                 self.paired_event.set()
                 return
@@ -481,7 +480,7 @@ class ChaskiNode:
             "on_pair": on_pair,
             "root_host": node.host,
             "root_port": node.port,
-            "origin_suscriptions": self.suscriptions,
+            "origin_subscriptions": self.subscriptions,
             "ttl": self.ttl,
         }
 
@@ -858,7 +857,7 @@ class ChaskiNode:
             "name": self.name,
             "host": self.host,
             "port": self.port,
-            "suscriptions": self.suscriptions,
+            "subscriptions": self.subscriptions,
             "ping_id": message.data["ping_id"],
             "response": message.data["response"],
             "latency_update": message.data["latency_update"],
@@ -896,7 +895,7 @@ class ChaskiNode:
         server_edge.name = message.data["name"]
         server_edge.host = message.data["host"]
         server_edge.port = message.data["port"]
-        server_edge.subscriptions = message.data["suscriptions"]
+        server_edge.subscriptions = message.data["subscriptions"]
 
         await asyncio.sleep(0)
 
@@ -954,7 +953,7 @@ class ChaskiNode:
             "name": self.name,
             "host": self.host,
             "port": self.port,
-            "suscriptions": self.suscriptions,
+            "subscriptions": self.subscriptions,
             "handshake_id": message.data["handshake_id"],
         }
 
@@ -987,7 +986,7 @@ class ChaskiNode:
         server_edge.name = message.data["name"]
         server_edge.host = message.data["host"]
         server_edge.port = message.data["port"]
-        server_edge.subscriptions = message.data["suscriptions"]
+        server_edge.subscriptions = message.data["subscriptions"]
 
         async with self.lock:
             self.server_pairs.append(server_edge)
@@ -1030,7 +1029,7 @@ class ChaskiNode:
             logger_main.debug(f"{self.name}: Discovery time-to-live (TTL) reached 0.")
             return
 
-        if message.data["origin_suscriptions"].intersection(self.suscriptions):
+        if message.data["origin_subscriptions"].intersection(self.subscriptions):
             await self.connect_to_peer(
                 message.data["origin_host"],
                 message.data["origin_port"],
