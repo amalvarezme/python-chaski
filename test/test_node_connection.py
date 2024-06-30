@@ -109,7 +109,7 @@ class TestConnections:
         await asyncio.sleep(3)
 
         for i in range(4):
-            self.assertEqual(len(nodes[i].server_pairs), 1, f"Node {i} connection failed")
+            self.assertEqual(len(nodes[i].edges), 1, f"Node {i} connection failed")
 
         self._close_nodes(nodes)
         nodes = await create_nodes(4, self.host)
@@ -118,7 +118,7 @@ class TestConnections:
         await asyncio.sleep(3)
 
         for i in range(4):
-            self.assertEqual(len(nodes[i].server_pairs), 1, f"Node {i} connection failed")
+            self.assertEqual(len(nodes[i].edges), 1, f"Node {i} connection failed")
 
         self._close_nodes(nodes)
 
@@ -149,8 +149,8 @@ class TestConnections:
         await asyncio.sleep(0.3)
 
         for i in range(1, 5):
-            self.assertEqual(len(nodes[i].server_pairs), 1, f"Node {i}'s connection to Node 0 failed")
-        self.assertEqual(len(nodes[0].server_pairs), 4, f"Node 0 failed to establish all connections")
+            self.assertEqual(len(nodes[i].edges), 1, f"Node {i}'s connection to Node 0 failed")
+        self.assertEqual(len(nodes[0].edges), 4, f"Node 0 failed to establish all connections")
 
         self._close_nodes(nodes)
         nodes = await create_nodes(5, self.host)
@@ -159,8 +159,8 @@ class TestConnections:
         await asyncio.sleep(0.3)
 
         for i in range(1, 5):
-            self.assertEqual(len(nodes[i].server_pairs), 1, f"Node {i}'s connection to Node 0 failed")
-        self.assertEqual(len(nodes[0].server_pairs), 4, f"Node 0 failed to establish all connections")
+            self.assertEqual(len(nodes[i].edges), 1, f"Node {i}'s connection to Node 0 failed")
+        self.assertEqual(len(nodes[0].edges), 4, f"Node 0 failed to establish all connections")
 
         self._close_nodes(nodes)
 
@@ -194,9 +194,9 @@ class TestConnections:
         await nodes[0].stop()
         await asyncio.sleep(0.3)
 
-        self.assertEqual(len(nodes[0].server_pairs), 0, "Node 0 not disconnected")
+        self.assertEqual(len(nodes[0].edges), 0, "Node 0 not disconnected")
         for i in range(1, 5):
-            self.assertEqual(len(nodes[i].server_pairs), 0, f"Node {i} not disconnected")
+            self.assertEqual(len(nodes[i].edges), 0, f"Node {i} not disconnected")
 
         self._close_nodes(nodes)
 
@@ -234,14 +234,14 @@ class TestConnections:
 
         await asyncio.sleep(0.3)
         for i in range(4):
-            await nodes[0].close_connection(nodes[0].server_pairs[0])
+            await nodes[0].close_connection(nodes[0].edges[0])
             await asyncio.sleep(0.3)
-            self.assertEqual(len(nodes[0].server_pairs), max(3 - i, 1), "Node 0 connections failed")
+            self.assertEqual(len(nodes[0].edges), max(3 - i, 1), "Node 0 connections failed")
 
         await asyncio.sleep(0.3)
         for i in range(1, 4):
-            self.assertEqual(len(nodes[i].server_pairs), 1, f"Node {i} connections failed")
-        self.assertEqual(len(nodes[4].server_pairs), 2, "Node 4 connections failed")
+            self.assertEqual(len(nodes[i].edges), 1, f"Node {i} connections failed")
+        self.assertEqual(len(nodes[4].edges), 2, "Node 4 connections failed")
 
         self._close_nodes(nodes)
 
@@ -271,17 +271,17 @@ class TestConnections:
             await nodes[i].connect_to_peer(nodes[0])
         await asyncio.sleep(0.3)
 
-        self.assertEqual(len(nodes[0].server_pairs), 4, "Node 0 connections failed")
+        self.assertEqual(len(nodes[0].edges), 4, "Node 0 connections failed")
         for i in range(1, 5):
-            self.assertEqual(len(nodes[i].server_pairs), 1, f"Node {i} connections failed")
+            self.assertEqual(len(nodes[i].edges), 1, f"Node {i} connections failed")
 
         for i in range(1, 5):
-            await nodes[i].close_connection(nodes[i].server_pairs[0])
+            await nodes[i].close_connection(nodes[i].edges[0])
 
         await asyncio.sleep(0.3)
-        self.assertEqual(len(nodes[0].server_pairs), 4, "Node 0 connections failed after orphan detection")
+        self.assertEqual(len(nodes[0].edges), 4, "Node 0 connections failed after orphan detection")
         for i in range(1, 5):
-            self.assertEqual(len(nodes[i].server_pairs), 1, f"Node {i} connections failed after orphan detection")
+            self.assertEqual(len(nodes[i].edges), 1, f"Node {i} connections failed after orphan detection")
 
         self._close_nodes(nodes)
 
@@ -312,17 +312,17 @@ class TestConnections:
             await nodes[i].connect_to_peer(nodes[0])
         await asyncio.sleep(0.5)
 
-        self.assertEqual(len(nodes[0].server_pairs), 4, "Node 0 connections failed")
+        self.assertEqual(len(nodes[0].edges), 4, "Node 0 connections failed")
         for i in range(1, 5):
-            self.assertEqual(len(nodes[i].server_pairs), 1, f"Node {i} connections failed")
+            self.assertEqual(len(nodes[i].edges), 1, f"Node {i} connections failed")
 
-        for edge in nodes[0].server_pairs:
+        for edge in nodes[0].edges:
             await nodes[0].close_connection(edge)
 
         await asyncio.sleep(0.3)
-        self.assertEqual(len(nodes[0].server_pairs), 4, "Node 0 connections failed after orphan detection")
+        self.assertEqual(len(nodes[0].edges), 4, "Node 0 connections failed after orphan detection")
         for i in range(1, 5):
-            self.assertEqual(len(nodes[i].server_pairs), 1, f"Node {i} connections failed after orphan detection")
+            self.assertEqual(len(nodes[i].edges), 1, f"Node {i} connections failed after orphan detection")
 
         self._close_nodes(nodes)
 
