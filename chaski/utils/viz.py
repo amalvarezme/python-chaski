@@ -29,7 +29,7 @@ def display_graph(nodes: List[ChaskiNode], layout=nx.circular_layout, show_laten
     G = nx.Graph()
 
     # Prepare nodes for graph representation
-    nodes_ = [{'name': node.name, 'paired':all([node.paired_event[sub].is_set() for sub in node.subscriptions]), 'subscriptions':f"{{{''.join(node.subscriptions)}}}", 'server_pairs': {v.name: v.latency for v in node.server_pairs}} for node in nodes]
+    nodes_ = [{'name': node.name, 'paired':all([node.paired_event[sub].is_set() for sub in node.subscriptions]), 'subscriptions':f"{{{''.join(node.subscriptions)}}}", 'server_pairs': {v.name: v.latency for v in node.edges}} for node in nodes]
 
     # Add edges to the graph
     for node in nodes_:
@@ -74,13 +74,13 @@ def display_graph(nodes: List[ChaskiNode], layout=nx.circular_layout, show_laten
     # latencies = [peer.latency for node in nodes for peer in node['server_pairs']]
     latencies = []
     for node in nodes:
-        for edge in node.server_pairs:
+        for edge in node.edges:
             latencies.append(edge.latency)
 
     # Log statistics
     log = f"""
     nodes: {len(nodes)}
-    connections: {0.5 * sum(len(node.server_pairs) for node in nodes): .0f}
+    connections: {0.5 * sum(len(node.edges) for node in nodes): .0f}
     max(latency): {np.max(latencies): .3f} ms
     min(latency): {np.min(latencies): .3f} ms
     mean(latency): {np.mean(latencies): .3f} ms
@@ -121,7 +121,7 @@ def display_heatmap(nodes: List[ChaskiNode], show=True) -> None:
     graph = {}
     for node in nodes:
         row = {}
-        for peer in node.server_pairs:
+        for peer in node.edges:
             row[peer.name] = peer.latency
         graph[node.name] = row
 
