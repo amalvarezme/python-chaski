@@ -43,6 +43,36 @@ logger_udp = logging.getLogger("ChaskiNodeUDP")
 ########################################################################
 @dataclass
 class Edge:
+    """
+    Represents a connection to a peer node, encompassing essential communication features and performance metrics.
+
+    The `Edge` class is designed to manage and provide detailed insights into network connections between nodes.
+    This class focuses on TCP connections, offering methods for performance evaluation, address management,
+    and connection properties.
+
+    Attributes
+    ----------
+    writer : asyncio.StreamWriter
+        StreamWriter for sending data to the connected peer node.
+    reader : asyncio.StreamReader
+        StreamReader for reading data from the connected peer node.
+    latency : float, optional
+        Current latency in the connection, default is 0 milliseconds.
+    jitter : float, optional
+        Variation in latency, default is 0 milliseconds.
+    name : str, optional
+        The name identifier of the edge, typically used for logging and monitoring.
+    host : str, optional
+        The host (IP address or hostname) of the connected peer node.
+    port : int, optional
+        The port number of the connected peer node.
+    subscriptions : set, optional
+        Set of topics this edge subscribes to.
+    ping_in_progress : bool, optional
+        A flag to indicate if a ping operation is in progress, default is False.
+    paired : bool, optional
+        A flag to indicate if the node is paired, default is False.
+    """
     writer: asyncio.StreamWriter
     reader: asyncio.StreamReader
     latency: float = 0
@@ -52,6 +82,7 @@ class Edge:
     port: int = 0
     subscriptions: set = field(default_factory=set)
     ping_in_progress: bool = False
+    paired: bool = False
 
     # ----------------------------------------------------------------------
     def __repr__(self) -> str:
@@ -261,10 +292,11 @@ class ChaskiNode:
         serializer: Callable[[Any], bytes] = pickle.dumps,
         deserializer: Callable[[bytes], Any] = pickle.loads,
         name: Optional[str] = None,
-        subscriptions: List[str] = [],
+        subscriptions: Union[str, List[str]] = [],
         run: bool = False,
         ttl: int = 64,
         root: bool = False,
+        max_connections: int = 5,
     ) -> None:
         """
         Represent a ChaskiNode, which handles various network operations and manages connections.
@@ -288,8 +320,8 @@ class ChaskiNode:
             The function to deserialize received data. Defaults to `pickle.loads`.
         name : Optional[str], optional
             The name of the node, used for identification and logging purposes. Defaults to `None`.
-        subscriptions : List[str], optional
-            A list of subscription topic strings this node is interested in. Defaults to an empty list.
+        subscriptions : Union[str, List[str]], optional
+            A string or list of subscription topic strings this node is interested in. Defaults to an empty list.
         run : bool, optional
             A flag determining whether the TCP and UDP servers should start immediately upon the node's
             initialization. Defaults to `False`.
@@ -305,19 +337,28 @@ class ChaskiNode:
         self.deserializer = deserializer
         self.server = None
         self.ttl = ttl
-        self.subscriptions = set(subscriptions)
+
+        if isinstance(subscriptions, str):
+            self.subscriptions = set([subscriptions])
+        else:
+            self.subscriptions = set(subscriptions)
+
         self.name = f"{name}"
         self.parent_node = None
         self.server_pairs = []
-        self.paired_event = asyncio.Event()
         self.lock = asyncio.Lock()
         self.lock_pair = asyncio.Lock()
         self.lock_disconnect = asyncio.Lock()
         self.ping_events = {}
         self.handshake_events = {}
+        self.max_connections = max_connections
 
-        if root:
-            self.paired_event.set()
+        self.paired_event = {}
+        for subscription in subscriptions:
+            self.paired_event[subscription] = asyncio.Event()
+
+            if root:
+                self.paired_event[subscription].set()
 
         if run:
             asyncio.create_task(self.run())
@@ -422,6 +463,7 @@ class ChaskiNode:
 
         if paired:
             data['paired'] = paired
+            edge.paired = True
             await self._write(
                 command="report_paired",
                 data=data,
@@ -452,52 +494,59 @@ class ChaskiNode:
             The maximum time in seconds to wait for the discovery process to complete before
             considering the node as paired. Defaults to 10 seconds.
         """
-        self.paired_event.clear()
+        for subscription in self.subscriptions:
+            self.paired_event[subscription].clear()
 
         if not self.server_pairs:
             logger_main.warning(f"{self.name}: No connection to perform discovery.")
             return
 
-        for edge in self.server_pairs:
-            if edge.subscriptions.intersection(self.subscriptions):
-                logger_main.warning(f"{self.name}: The node is already paired.")
-                self.paired_event.set()
-                return
-
         if (node is None) and (len(self.server_pairs) == 0):
             logger_main.warning(f"{self.name}: Unable to discover new nodes no 'Node' or 'Edge' available.")
             return
 
+        for edge in self.server_pairs:
+            unpaired_subscription = []
+            for subscription in self.subscriptions:
+                if subscription in edge.subscriptions:
+                    logger_main.warning(f"{self.name}: The node is already paired for suscription {subscription}.")
+                    edge.paired = True
+                    self.paired_event[subscription].set()
+                else:
+                    unpaired_subscription.append(subscription)
+
         if not node:
             node = self.server_pairs[0]
 
-        data = {
-            "origin_host": self.host,
-            "origin_port": self.port,
-            "origin_name": self.name,
-            "previous_node": self.name,
-            "visited": set([self.name]),
-            "on_pair": on_pair,
-            "root_host": node.host,
-            "root_port": node.port,
-            "origin_subscriptions": self.subscriptions,
-            "ttl": self.ttl,
-        }
+        for subscription in unpaired_subscription:
 
-        await self._write(
-            command="discovery",
-            data=data,
-            writer=node.writer,
-        )
+            data = {
+                "origin_host": self.host,
+                "origin_port": self.port,
+                "origin_name": self.name,
+                "previous_node": self.name,
+                "visited": set([self.name]),
+                "on_pair": on_pair,
+                "root_host": node.host,
+                "root_port": node.port,
+                "origin_subscription": subscription,
+                "ttl": self.ttl,
+            }
 
-        t0 = time.time()
-        while time.time() < t0 + timeout:
-            await asyncio.sleep(0.1)
-            if self.paired_event.is_set():
-                break
-        if time.time() > t0 + timeout:
-            logger_main.warning(f"{self.name}: Timeout reached during discovery process node is considered paired.")
-        self.paired_event.set()
+            await self._write(
+                command="discovery",
+                data=data,
+                writer=node.writer,
+            )
+
+            t0 = time.time()
+            while time.time() < t0 + timeout:
+                await asyncio.sleep(0.1)
+                if self.paired_event[subscription].is_set():
+                    break
+            if time.time() > t0 + timeout:
+                logger_main.warning(f"{self.name}: Timeout reached during discovery process for subscription {subscription}, node is considered paired.")
+            self.paired_event[subscription].set()
 
     # ----------------------------------------------------------------------
     async def close_connection(self, edge: Edge, port: Optional[int] = None) -> None:
@@ -524,10 +573,7 @@ class ChaskiNode:
             self.server_pairs
 
             if port:
-                for edge_ in self.server_pairs:
-                    if (edge_.host == edge) and (edge_.port == port):
-                        edge = edge_
-                        break
+                edge = self.get_edge(edge, port)
 
             if not bool(edge.host and edge.port and edge.name):
                 self.name
@@ -564,6 +610,31 @@ class ChaskiNode:
                         # logger_main.warning(f"{self.name}: Unable to reconnect with {edge}")
 
             logger_main.debug(f"{self.name}: Connection to {edge} has been closed and removed.")
+
+
+    # ----------------------------------------------------------------------
+    def get_edge(self, host: str, port: int) -> Optional[Edge]:
+        """
+        Retrieve an existing edge by its host and port.
+
+        This method looks up and returns an `Edge` instance that matches the given host
+        and port. If no such edge is found, it returns `None`.
+
+        Parameters
+        ----------
+        host : str
+            The host IP address or hostname of the edge to find.
+        port : int
+            The port number of the edge to find.
+
+        Returns
+        -------
+        Optional[Edge]
+            The `Edge` instance with the specified host and port if found, else `None`.
+        """
+        for edge_ in self.server_pairs:
+            if (edge_.host == host) and (edge_.port == port):
+                return edge_
 
     # ----------------------------------------------------------------------
     async def connected(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
@@ -620,7 +691,7 @@ class ChaskiNode:
 
                 message = self.deserializer(data)
                 logger_main.debug(f"{self.name}: Received a message of size {length} bytes.")
-                await self._process_message(message, edge)
+                await self._loop_message(message, edge)
 
         except ConnectionResetError as e:
             logger_main.warning(
@@ -645,7 +716,7 @@ class ChaskiNode:
             await self.close_connection(edge)
 
     # ----------------------------------------------------------------------
-    async def _process_message(self, message: Message, edge: Edge) -> None:
+    async def _loop_message(self, message: Message, edge: Edge) -> None:
         """
         Asynchronously process a received message and invoke the appropriate handler.
 
@@ -682,23 +753,31 @@ class ChaskiNode:
             The edge from which the 'report_paired' message was received. It provides context for where to apply the action specified in the message data.
         """
 
+        edge.paired = True
+
         async with self.lock_pair:
 
-            if self.paired_event.is_set():
-                logger_main.debug(f"{self.name}: Node is already paired, clossing conexxxxxion")
+            subscription = message.data["paired"]
+
+            if self.paired_event[subscription].is_set():
+                logger_main.debug(f"{self.name}: Node is already paired, closing connection")
                 await self.close_connection(edge)
                 return
 
-            if message.data["paired"]:
-                match message.data['on_pair']:
-                    case 'none':
-                        pass
-                    case 'disconnect':
-                        logger_main.debug(f"{self.name}: Disconnected after pairing with {message.data['root_host']} {message.data['root_port']}.")
-                        await self.close_connection(message.data['root_host'], message.data['root_port'])
+            match message.data['on_pair']:
+                case 'none':
+                    pass
+                case 'disconnect':
+                    logger_main.debug(f"{self.name}: Disconnected after pairing with {message.data['root_host']} {message.data['root_port']}.")
 
-                logger_main.debug(f"{self.name}: Node is successfully paired.")
-                self.paired_event.set()
+                    edge = self.get_edge(message.data['root_host'],
+                                         message.data['root_port'])
+                    if edge and not edge.paired:
+                        await self.close_connection(edge)
+                    # await self.close_connection(edge)
+
+            logger_main.debug(f"{self.name}: Node is successfully paired.")
+            self.paired_event[subscription].set()
 
     # ----------------------------------------------------------------------
     async def _start_tcp_server(self) -> None:
@@ -1014,14 +1093,16 @@ class ChaskiNode:
             sending the discovery message back to the sender. Defaults to None.
         """
 
-        if not self.paired_event.is_set():
+        subscription = message.data["origin_subscription"]
+
+        if not all([self.paired_event[sub].is_set() for sub in self.subscriptions]):
             return
 
         status = await self._request_status(
             message.data["origin_host"],
             message.data["origin_port"],
         )
-        if status.data["paired"]:
+        if status.data["paired"][subscription]:
             logger_main.debug(f"{self.name}: Node is already paired with another branch.")
             return
 
@@ -1029,11 +1110,11 @@ class ChaskiNode:
             logger_main.debug(f"{self.name}: Discovery time-to-live (TTL) reached 0.")
             return
 
-        if message.data["origin_subscriptions"].intersection(self.subscriptions):
+        if (len(self.server_pairs) < self.max_connections) and (subscription in self.subscriptions):
             await self.connect_to_peer(
                 message.data["origin_host"],
                 message.data["origin_port"],
-                paired=True,
+                paired=subscription,
                 data=message.data,
             )
         else:
@@ -1051,7 +1132,7 @@ class ChaskiNode:
                 if not server_edge.name in [
                     message.data["previous_node"],
                     message.data["origin_name"],
-                ]:
+                    ]:
                     await self._write(
                         command="discovery",
                         data=new_data,
@@ -1157,11 +1238,8 @@ class ChaskiNode:
         """
         message = self.deserializer(data)
         if message.command == "status":
-            data = {
-                "id": message.data["id"],
-                "paired": self.paired_event.is_set(),
-                "serving": not self.server_closing,
-            }
+            data = self.get_status(id=message.data["id"])
+            # data["id"] = message.data["id"],
             await self._send_udp_message("response", data, *addr[:2])
 
         elif message.command == "response":
@@ -1169,6 +1247,10 @@ class ChaskiNode:
 
             if message.data["id"] in self.request_response_multiplexer_events:
                 self.request_response_multiplexer_events[message.data["id"]].set()
+            else:
+                id2 =  message.data["id"]
+                k3 = self.request_response_multiplexer_events.keys()
+                logging.warning('DAFAK')
 
         # elif message.command == "discovery":
         # await self._process_discovery(message)
@@ -1295,3 +1377,14 @@ class ChaskiNode:
         """
         return (node.host, node.port) in [(edge.host, edge.port) for edge in self.server_pairs]
 
+
+
+    # ----------------------------------------------------------------------
+    # @property
+    def get_status(self, **kwargs):
+        """"""
+        return {
+            "paired": {sub:self.paired_event[sub].is_set() for sub in self.subscriptions},
+            "serving": not self.server_closing,
+            **kwargs
+        }
