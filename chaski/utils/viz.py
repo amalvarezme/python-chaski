@@ -17,7 +17,7 @@ from chaski.node import ChaskiNode
 import seaborn as sns
 
 # ----------------------------------------------------------------------
-def display_graph(nodes: List[ChaskiNode], layout=nx.circular_layout) -> None:
+def display_graph(nodes: List[ChaskiNode], layout=nx.circular_layout, show_latencies=False) -> None:
     """
     Display the network graph and latency statistics.
 
@@ -29,7 +29,7 @@ def display_graph(nodes: List[ChaskiNode], layout=nx.circular_layout) -> None:
     G = nx.Graph()
 
     # Prepare nodes for graph representation
-    nodes_ = [{'name': node.name, 'subscriptions':f"{{{''.join(node.subscriptions)}}}", 'server_pairs': {v.name: v.latency for v in node.server_pairs}} for node in nodes]
+    nodes_ = [{'name': node.name, 'paired':all([node.paired_event[sub].is_set() for sub in node.subscriptions]), 'subscriptions':f"{{{''.join(node.subscriptions)}}}", 'server_pairs': {v.name: v.latency for v in node.server_pairs}} for node in nodes]
 
     # Add edges to the graph
     for node in nodes_:
@@ -42,6 +42,8 @@ def display_graph(nodes: List[ChaskiNode], layout=nx.circular_layout) -> None:
     options = {
         "with_labels": False,
         "node_color": '#6DA58A',
+        'edgecolors': ['#008080' if node['paired'] else '#6DA58A' for node in nodes_],
+        'linewidths': 5,
         "edge_color": "#B3B3BD",
         "width": 3,
         "node_size": 1500,
@@ -54,7 +56,11 @@ def display_graph(nodes: List[ChaskiNode], layout=nx.circular_layout) -> None:
     # Create the plot
     plt.figure(figsize=(16, 9), dpi=90)
 
-    ax1 = plt.subplot2grid((3, 5), (0, 0), colspan=4, rowspan=3)
+    if show_latencies:
+        ax1 = plt.subplot(111)
+    else:
+        ax1 = plt.subplot2grid((3, 5), (0, 0), colspan=4, rowspan=3)
+
     nx.draw(G, ax=ax1, **options)
 
     labels = {node['name']:node['name'] for node in nodes_}
@@ -63,7 +69,6 @@ def display_graph(nodes: List[ChaskiNode], layout=nx.circular_layout) -> None:
     labels = {node['name']:node['subscriptions'] for node in nodes_}
     nx.draw_networkx_labels(G, {k:pos[k]+np.array([0.0, -0.02]) for k in pos}, labels, ax=ax1, font_color='#ffffff', font_size=8)
 
-    ax2 = plt.subplot2grid((3, 5), (2, 4), colspan=1)
 
     # Collect latencies for statistics
     # latencies = [peer.latency for node in nodes for peer in node['server_pairs']]
@@ -82,8 +87,6 @@ def display_graph(nodes: List[ChaskiNode], layout=nx.circular_layout) -> None:
     std(latency): {np.std(latencies): .3f} ms
     """
 
-    # log = ""
-
     # Display log statistics
     font_options = {
         "fontsize": 12,
@@ -92,8 +95,10 @@ def display_graph(nodes: List[ChaskiNode], layout=nx.circular_layout) -> None:
         "ha": 'left',
         "color": "#0B5D37",
     }
-    ax2.text(0, 1, log, **font_options)
-    ax2.axis('off')
+    if show_latencies:
+        ax2 = plt.subplot2grid((3, 5), (2, 4), colspan=1)
+        ax2.text(0, 1, log, **font_options)
+        ax2.axis('off')
 
     plt.show()
 
