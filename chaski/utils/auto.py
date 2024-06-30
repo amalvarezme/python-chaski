@@ -1,5 +1,5 @@
 from chaski.node import ChaskiNode
-from typing import List, Optional
+from typing import List, Union
 import asyncio
 from string import ascii_uppercase
 
@@ -7,31 +7,38 @@ PORT = 65432
 
 
 # ----------------------------------------------------------------------
-async def create_nodes(n: int, host: str = '127.0.0.1', port: int = PORT, subscriptions: Optional[List[str]] = None) -> List[ChaskiNode]:
+async def create_nodes(subscriptions: Union[int, List[str]], host: str = '127.0.0.1', port: int = PORT) -> List[ChaskiNode]:
     """
     Create a list of ChaskiNode instances.
 
+    This function generates a list of ChaskiNode instances with the given number of nodes
+    or subscriptions. If an integer is provided for subscriptions, the first `n` letters
+    of the alphabet will be used as default subscription topics. Each node will run on
+    a sequentially incremented port starting from the given port number.
+
     Parameters
     ----------
-    n : int
-        Number of nodes to create.
-    subscriptions : list of str, optional
-        List of subscription topics for the nodes. If None, the first `n` letters
-        of the alphabet will be used.
+    subscriptions : Union[int, List[str]]
+        The number of nodes to create if an integer is provided. If a list of strings is
+        provided, each string represents a subscription topic for a node.
+    host : str, optional
+        The host IP address or hostname where the nodes will bind to, by default '127.0.0.1'.
+    port : int, optional
+        The starting port number for the nodes, by default PORT.
 
     Returns
     -------
-    list of ChaskiNode
-        List of created nodes.
+    List[ChaskiNode]
+        A list of ChaskiNode instances.
     """
-    if subscriptions is None:
-        subscriptions = list(ascii_uppercase)[:n]
+    if isinstance(subscriptions, int):
+        subscriptions = list(ascii_uppercase)[:subscriptions]
 
     nodes = [ChaskiNode(
         host=host,
         port=port + i,
         name=f'Node{i}',
-        subscriptions=[sub],
+        subscriptions=sub,
         run=True,
         ttl=15,
         root=(i == 0)
