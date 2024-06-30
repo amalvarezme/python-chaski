@@ -17,7 +17,7 @@ from chaski.node import ChaskiNode
 import seaborn as sns
 
 # ----------------------------------------------------------------------
-def display_graph(nodes: List[ChaskiNode]) -> None:
+def display_graph(nodes: List[ChaskiNode], layout=nx.circular_layout) -> None:
     """
     Display the network graph and latency statistics.
 
@@ -29,16 +29,18 @@ def display_graph(nodes: List[ChaskiNode]) -> None:
     G = nx.Graph()
 
     # Prepare nodes for graph representation
-    nodes_ = [{'name': node.name, 'server_pairs': {v.name: v.latency for v in node.server_pairs}} for node in nodes]
+    nodes_ = [{'name': node.name, 'subscriptions':f"{{{''.join(node.subscriptions)}}}", 'server_pairs': {v.name: v.latency for v in node.server_pairs}} for node in nodes]
 
     # Add edges to the graph
     for node in nodes_:
         for neighbor, latency in node["server_pairs"].items():
             G.add_edge(node["name"], neighbor, weight=latency)
 
+    pos = layout(G)
+
     # Graph display options
     options = {
-        "with_labels": True,
+        "with_labels": False,
         "node_color": '#6DA58A',
         "edge_color": "#B3B3BD",
         "width": 3,
@@ -46,7 +48,7 @@ def display_graph(nodes: List[ChaskiNode]) -> None:
         "font_color": '#ffffff',
         "font_family": 'Noto Sans',
         "font_size": 11,
-        "pos": nx.circular_layout(G),
+        "pos": pos,
     }
 
     # Create the plot
@@ -55,24 +57,32 @@ def display_graph(nodes: List[ChaskiNode]) -> None:
     ax1 = plt.subplot2grid((3, 5), (0, 0), colspan=4, rowspan=3)
     nx.draw(G, ax=ax1, **options)
 
+    labels = {node['name']:node['name'] for node in nodes_}
+    nx.draw_networkx_labels(G, {k:pos[k]+np.array([0.0, 0.03]) for k in pos}, labels, ax=ax1, font_color='#ffffff', font_size=11)
+
+    labels = {node['name']:node['subscriptions'] for node in nodes_}
+    nx.draw_networkx_labels(G, {k:pos[k]+np.array([0.0, -0.02]) for k in pos}, labels, ax=ax1, font_color='#ffffff', font_size=8)
+
     ax2 = plt.subplot2grid((3, 5), (2, 4), colspan=1)
 
-    if node.server_pairs:
+    # Collect latencies for statistics
+    # latencies = [peer.latency for node in nodes for peer in node['server_pairs']]
+    latencies = []
+    for node in nodes:
+        for edge in node.server_pairs:
+            latencies.append(edge.latency)
 
-        # Collect latencies for statistics
-        latencies = [peer.latency for node in nodes for peer in node.server_pairs]
+    # Log statistics
+    log = f"""
+    nodes: {len(nodes)}
+    connections: {0.5 * sum(len(node.server_pairs) for node in nodes): .0f}
+    max(latency): {np.max(latencies): .3f} ms
+    min(latency): {np.min(latencies): .3f} ms
+    mean(latency): {np.mean(latencies): .3f} ms
+    std(latency): {np.std(latencies): .3f} ms
+    """
 
-        # Log statistics
-        log = f"""
-        nodes: {len(nodes)}
-        connections: {0.5 * sum(len(node.server_pairs) for node in nodes): .0f}
-        max(latency): {np.max(latencies): .3f} ms
-        min(latency): {np.min(latencies): .3f} ms
-        mean(latency): {np.mean(latencies): .3f} ms
-        std(latency): {np.std(latencies): .3f} ms
-        """
-    else:
-        log = ""
+    # log = ""
 
     # Display log statistics
     font_options = {
