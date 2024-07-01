@@ -199,7 +199,6 @@ class Message:
     Parameters
     ----------
     command : str
-
         The specific command or instruction that this message signifies. Commands are typically predefined and
         understood by both the sender and receiver in the communication protocol being implemented.
     data : Any
@@ -212,8 +211,9 @@ class Message:
 
     """
     command: str
-    data: Any
-    timestamp: datetime
+    topic: str = ''
+    data: Any = None
+    timestamp: datetime = 0
 
 
 ########################################################################
@@ -288,13 +288,13 @@ class ChaskiNode:
     # ----------------------------------------------------------------------
     def __init__(
         self,
-        host: str,
-        port: int,
+        host: str = '127.0.0.1',
+        port: int = 8511,
         serializer: Callable[[Any], bytes] = pickle.dumps,
         deserializer: Callable[[bytes], Any] = pickle.loads,
         name: Optional[str] = None,
         subscriptions: Union[str, List[str]] = [],
-        run: bool = False,
+        run: bool = True,
         ttl: int = 64,
         root: bool = False,
         max_connections: int = 5,
@@ -345,6 +345,8 @@ class ChaskiNode:
         # Convert subscriptions to a set if provided as a string
         if isinstance(subscriptions, str):
             self.subscriptions = set([subscriptions])
+        elif subscriptions is None:
+            self.subscriptions = []
         else:
             self.subscriptions = set(subscriptions)
 
@@ -424,7 +426,7 @@ class ChaskiNode:
                 logger_main.warning("Timeout waiting for server to close.")
 
     # ----------------------------------------------------------------------
-    async  def connect_to_peer(
+    async def connect_to_peer(
         self,
         node: 'ChaskiNode',
         peer_port: Optional[int] = None,
@@ -455,18 +457,18 @@ class ChaskiNode:
         else:
             peer_host, peer_port = node, peer_port
 
-        # Check if the node is trying to connect to itself
-        if self.host == peer_host and self.port == peer_port:
-            logger_main.warning(f"{self.name}: Impossible to connect a node to itself.")
-            return
+        # # Check if the node is trying to connect to itself
+        # if self.host == peer_host and self.port == peer_port:
+            # logger_main.warning(f"{self.name}: Impossible to connect a node to itself.")
+            # return False
 
         # Check if a connection to the peer host and port already exists
         if (peer_host, peer_port, False) in [(edge.host, edge.port, edge.writer.is_closing()) for edge in self.edges]:
             logger_main.warning(f"{self.name}: Already connected with this node.")
-            return
+            return False
 
         # Resolve address info for the specified host and port
-        addr_info = socket.getaddrinfo(self.host, self.port, socket.AF_UNSPEC, socket.SOCK_DGRAM)
+        addr_info = socket.getaddrinfo(peer_host, peer_port, socket.AF_UNSPEC, socket.SOCK_DGRAM)
         if not addr_info:
             raise ValueError(f"Cannot resolve address: {self.host}")
         family, socktype, proto, canonname, sockaddr = addr_info[0]
@@ -489,6 +491,19 @@ class ChaskiNode:
         logger_main.debug(f"{self.name}: New connection with {edge.address}.")
         asyncio.create_task(self._reader_loop(edge))
         await self._handshake(edge, response=True)
+        return True
+
+    # ----------------------------------------------------------------------
+    async def connect(self) -> None:
+        """
+        Connect to the node itself.
+
+        This method initiates a connection to the current node. It uses the `connect_to_peer`
+        method to establish a TCP connection to its own host and port. This might be useful for
+        testing or special communication scenarios where a node needs to loop messages back
+        to itself.
+        """
+        await self.connect_to_peer(self)
 
     # ----------------------------------------------------------------------
     async def discovery(self, node: Optional['ChaskiNode'] = None, on_pair: Union[str, Literal['none', 'disconnect']] = 'none', timeout: int = 10) -> None:
@@ -711,39 +726,55 @@ class ChaskiNode:
         try:
             # Reading data in chunks and processing messages
             while True:
+                # Read the length of data (4 bytes)
                 length_data = await edge.reader.readexactly(4)
+                length_topic = await edge.reader.readexactly(4)
+
+                # Check if the length of data is zero or missing
                 if not length_data:
                     return None
-                length = int.from_bytes(length_data, byteorder="big")
-                data = await edge.reader.readexactly(length)
-                if not data:
-                    raise ConnectionResetError("Connection closed by peer")
 
-                message = self.deserializer(data)
-                logger_main.debug(f"{self.name}: Received a message of size {length} bytes.")
-                await self._loop_message(message, edge)
+                # Convert the first 4 bytes to integer representing data length and topic length in bytes
+                length_data = int.from_bytes(length_data, byteorder="big")
+                length_topic = int.from_bytes(length_topic, byteorder="big")
+
+                # Read the topic from the edge reader exactly matching the topic length
+                topic = await edge.reader.readexactly(length_topic)
+
+                topic = self.deserializer(topic)
+                # Check if the topic is "All" or if the topic is in the node's subscriptions
+                if (topic == "All") or (topic in self.subscriptions):
+                    data = await edge.reader.readexactly(length_data)
+                    # Deserialize the received data into a message object
+                    message = self.deserializer(data)
+                    logger_main.debug(f"{self.name}: Received a message of size {length_data} bytes.")
+                    await self._loop_message(message, edge)
+                else:
+                    # Read exactly the specified length of data from the edge reader
+                    await edge.reader.readexactly(length_data)
 
         except ConnectionResetError as e:
-            logger_main.warning(
-                f"{self.name}: Connection reset by peer at {edge.address}: {str(e)}."
-            )
-            logger_main.error(f"{self.name}: An exception occurred: \n{traceback.format_exc()}")
-        except asyncio.IncompleteReadError:
-            logger_main.warning(
-                f"{self.name}: Connection closed while reading from {edge.address}."
-            )
-            logger_main.error(f"{self.name}: An exception occurred: \n{traceback.format_exc()}")
-        except Exception as e:
-            logger_main.warning(
-                f"{self.name}: Error in reader_loop for {edge.address}: {e}."
-            )
-            logger_main.error(f"{self.name}: An exception occurred: \n{traceback.format_exc()}")
-        finally:
-            logger_main.warning(f"{self.name}: Closing connection with {edge}")
-            logger_main.error(f"{self.name}: An exception occurred: \n{traceback.format_exc()}")
+            logger_main.debug(f"{self.name}: Connection reset by peer at {edge.address}: {str(e)}.")
+            logger_main.debug(f"{self.name}: An exception occurred: \n{traceback.format_exc()}")
 
+        except asyncio.IncompleteReadError:
+            logger_main.debug(f"{self.name}: Connection closed while reading from {edge.address}.")
+            logger_main.debug(f"{self.name}: An exception occurred: \n{traceback.format_exc()}")
+
+        except Exception as e:
+            logger_main.debug(f"{self.name}: Error in reader_loop for {edge.address}: {e}.")
+            logger_main.debug(f"{self.name}: An exception occurred: \n{traceback.format_exc()}")
+
+        finally:
+            # Close connection with the edge
+            logger_main.debug(f"{self.name}: Closing connection with {edge}")
+            logger_main.debug(f"{self.name}: An exception occurred: \n{traceback.format_exc()}")
             await self._remove_closing_connection()
             await self.close_connection(edge)
+
+            # Attempting to reconnect with the edge after a connection loss
+            logger_main.debug(f"{self.name}: attempting to reconnect with {edge}")
+            await self.try_to_reconnect(edge)
 
     # ----------------------------------------------------------------------
     async def _loop_message(self, message: Message, edge: Edge) -> None:
@@ -838,7 +869,7 @@ class ChaskiNode:
             await self.server.serve_forever()
 
     # ----------------------------------------------------------------------
-    async def _write(self, command: str, data: Any, writer: Optional[asyncio.StreamWriter] = None) -> None:
+    async def _write(self, command: str, data: Any, writer: Optional[asyncio.StreamWriter] = None, topic: str = 'All') -> None:
         """
         Write data to the specified writer or all connected peers.
 
@@ -853,11 +884,13 @@ class ChaskiNode:
         writer : Optional[asyncio.StreamWriter], optional
             The stream writer to which the message should be sent. If None, the message will be sent to all server pairs. Defaults to None.
         """
-        message = Message(command=command, data=data, timestamp=datetime.now())
+        message = Message(command=command, topic=topic, data=data, timestamp=datetime.now())
         data = self.serializer(message)
+        topic = self.serializer(topic)
 
         length = len(data).to_bytes(4, byteorder="big")
-        data = length + data
+        length_topic = len(topic).to_bytes(4, byteorder="big")
+        data = length + length_topic + topic + data
 
         if writer is None:
             for server_edge in self.edges:
@@ -871,7 +904,8 @@ class ChaskiNode:
                         logger_main.warning(
                             f"{self.name}: Connection lost while writing to {server_edge.address}."
                         )
-                        await self.close_connection(server_edge)
+                        await self.try_to_reconnect(server_edge)
+                        # await self.close_connection(server_edge)
         else:
             # Handling write operation with proper error management
             writer.write(data)
@@ -1451,3 +1485,30 @@ class ChaskiNode:
 
             **kwargs
         }
+
+    # ----------------------------------------------------------------------
+    async def try_to_reconnect(self, edge: Edge) -> None:
+        """
+        Continuously attempt to reconnect to a given edge.
+
+        This coroutine will retry to establish a TCP connection with the specified edge in case the initial connection
+        has been lost. The attempts will be made at 1-second intervals until a successful connection is established
+        or the coroutine is explicitly cancelled. This method is useful for maintaining persistent connections in a
+        network of ChaskiNodes.
+
+        Parameters
+        ----------
+        edge : Edge
+            The edge to which the reconnection attempts will be made. This represents the lost connection that needs
+            to be restored.
+        """
+        attempt = 0
+        while True:
+            attempt += 1
+            await asyncio.sleep(1)
+            try:
+                await self.connect_to_peer(edge)
+                return
+            except Exception as e:
+                logger_main.debug(f"{self.name}: Reconnection attempt {attempt + 1} failed: {e}")
+
