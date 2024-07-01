@@ -3,7 +3,7 @@
 ChaskiNode: Distributed Node Communication and Management
 =========================================================
 
-This module defines the ChaskiNode class and its associated classes for managing network communication
+This module defines the `ChaskiNode` class and its associated classes for managing network communication
 between distributed nodes. It provides a framework for creating Nodes which can connect to each other
 over TCP/IP, handle messaging and serialization of data, and perform network-wide functions, such as
 discovery and pairing of nodes based on shared subscriptions.
@@ -17,7 +17,6 @@ Classes
     - *UDPProtocol*: An asyncio protocol class for handling UDP packets, interfacing with the asyncio Datagram Protocol.
     - *ChaskiNode*: The main class representing a node in the network, which can initiate connections, handle incoming
       requests, and orchestrate network-wide actions.
-
 """
 
 import asyncio
@@ -27,6 +26,7 @@ import pickle
 import random
 import socket
 import time
+import re
 import traceback
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -39,6 +39,15 @@ logger_main = logging.getLogger("ChaskiNode")
 logger_edge = logging.getLogger("ChaskiNodeEdge")
 logger_udp = logging.getLogger("ChaskiNodeUDP")
 
+# List of default ports the ChaskiNode will attempt to use for establishing connections
+FAVORITE_PORTS = [
+    8511,
+    8512,
+    8513,
+    8514,
+    8515,
+    8516,
+]
 
 ########################################################################
 @dataclass
@@ -62,8 +71,8 @@ class Edge:
         Variation in latency, default is 0 milliseconds.
     name : str, optional
         The name identifier of the edge, typically used for logging and monitoring.
-    host : str, optional
-        The host (IP address or hostname) of the connected peer node.
+    ip : str, optional
+        The IP of the connected peer node.
     port : int, optional
         The port number of the connected peer node.
     subscriptions : set, optional
@@ -78,7 +87,7 @@ class Edge:
     latency: float = 0
     jitter: float = 0
     name: str = ""
-    host: str = ""
+    ip: str = ""
     port: int = 0
     subscriptions: set = field(default_factory=set)
     ping_in_progress: bool = False
@@ -90,7 +99,7 @@ class Edge:
         Return a string representation of the Edge.
 
         Generates a human-readable string that includes the Edge's name, latency,
-        jitter, host, and port. The string format highlights the state of the Edge
+        jitter, ip, and port. The string format highlights the state of the Edge
         in terms of network performance and connection details.
 
         Returns
@@ -98,9 +107,9 @@ class Edge:
         str
             A formatted string characterizing the Edge instance with details
             like name, latency (in milliseconds), jitter (in milliseconds),
-            host, and port.
+            IP, and port.
         """
-        return f"{self.name}: N({self.latency: .0f}, {self.jitter: .0f}) {self.host}: {self.port}"
+        return f"{self.name}: N({self.latency: .0f}, {self.jitter: .0f}) {self.ip}: {self.port}"
 
     # ----------------------------------------------------------------------
     @cached_property
@@ -115,7 +124,7 @@ class Edge:
         Returns
         -------
         tuple[str, int]
-            A tuple of two elements where the first element is the host (IP address or hostname) of
+            A tuple of two elements where the first element is the IP of
             the remote peer as a string, and the second element is the port number as an integer.
         """
         return self.writer.get_extra_info("peername")
@@ -126,12 +135,12 @@ class Edge:
         """
         Retrieve the local address to which the edge's writer is connected.
 
-        This cached property returns a tuple containing the local host IP address or hostname, and the local port number, obtained from the writer socket's information. It represents the local end of the connection managed by the edge.
+        This cached property returns a tuple containing the local IP address or hostname, and the local port number, obtained from the writer socket's information. It represents the local end of the connection managed by the edge.
 
         Returns
         -------
         Tuple[str, int]
-            A tuple containing the local address of the writer socket. The first element is the host IP address or hostname as a string, and the second element is the port number as an integer.
+            A tuple containing the local address of the writer socket. The first element is the IP address or hostname as a string, and the second element is the port number as an integer.
         """
         return self.writer.get_extra_info("sockname")
 
@@ -283,13 +292,23 @@ class UDPProtocol(asyncio.DatagramProtocol):
 
 ########################################################################
 class ChaskiNode:
-    """"""
+    """
+    Represents a ChaskiNode for distributed network communication.
+
+    The ChaskiNode class orchestrates the management of network communication
+    between distributed nodes. It can initiate, handle incoming requests, and
+    manage connections. The node is capable of:
+
+    - Creating TCP and UDP endpoints.
+    - Performing message serialization and deserialization.
+    - Implementing automatic network discovery and pairing based on subscriptions.
+    """
 
     # ----------------------------------------------------------------------
     def __init__(
         self,
-        host: str = '127.0.0.1',
-        port: int = 8511,
+        ip: str = '127.0.0.1',
+        port: int = 0,
         serializer: Callable[[Any], bytes] = pickle.dumps,
         deserializer: Callable[[bytes], Any] = pickle.loads,
         name: Optional[str] = None,
@@ -298,6 +317,7 @@ class ChaskiNode:
         ttl: int = 64,
         root: bool = False,
         max_connections: int = 5,
+        reconnections: int = 32,
     ) -> None:
         """
         Represent a ChaskiNode, which handles various network operations and manages connections.
@@ -308,12 +328,11 @@ class ChaskiNode:
         participate in network-wide actions like discovery, to find and connect with nodes sharing similar
         subscriptions.
 
-
         Parameters
         ----------
-        host : str
-            The hostname or IP address to listen on or bind to.
-        port : int
+        ip : str
+            The IP address to listen on or bind to.
+        ip : int
             The port number to listen on or bind to.
         serializer : Callable[[Any], bytes], optional
             The function to serialize data before sending it over the network. Defaults to `pickle.dumps`.
@@ -330,10 +349,27 @@ class ChaskiNode:
             Time-to-live value for discovery messages. Defaults to `64`.
         root : bool, optional
             Flag to indicate whether this node is the root in the network topology. Defaults to `False`.
+        reconnections : int, optional
+            The number of reconnection attempts to make if a node loses connection. Defaults to `32`.
 
+        Notes
+        -----
+        The combination of the `root` and `port` parameters in the configuration of a `ChaskiNode` determines how and on which port the node attempts to connect or listen.
+
+        - `root=True`, `port` specified:
+            - The node is initialized as a root node and uses the specified port to establish connections.
+
+        - `root=True`, `port` not specified (None or 0):
+            - A port will be chosen from the `FAVORITE_PORTS` list that is available. If no port is found, a free port will be dynamically assigned.
+
+        - `root=False`, `port` specified:
+            - The node is initialized as a non-root node and listens on the specified port.
+
+        - `root=False`, `port` not specified (None or 0):
+            - The node is not a root node and if no port is specified, a free port is dynamically assigned using `self.port = self.get_free_port()`.
         """
         # Initialize node parameters
-        self.host = host
+        self.ip = ip
         self.port = port
         self.serializer = serializer
         self.deserializer = deserializer
@@ -341,6 +377,18 @@ class ChaskiNode:
         self.ttl = ttl
         self.max_connections = max_connections
         self.name = f"{name}"
+        self.root = root
+        self.reconnections = reconnections
+
+        # If root and no specific port is set, select one from favorite ports that is available
+        if root and not self.port:
+            for port in FAVORITE_PORTS:
+                if self.is_port_available(port):
+                    self.port = port
+
+        # If port is 0, dynamically assign a free port
+        elif self.port == 0:
+            self.port = self.get_free_port()
 
         # Convert subscriptions to a set if provided as a string
         if isinstance(subscriptions, str):
@@ -359,6 +407,7 @@ class ChaskiNode:
         self.edges = []
         self.ping_events = {}
         self.handshake_events = {}
+        self.reconnecting = asyncio.Event()
 
         # Initialize paired_event dictionary with asyncio Events for each subscription
         self.paired_event = {}
@@ -376,7 +425,13 @@ class ChaskiNode:
         """
         Represent a node in a network graph.
 
-        This class represents an Edge in a network graph, which is part of a ChaskiNode. It encapsulates the necessary properties and methods for managing the state and behavior of a network connection. Edges track connection details like latency and jitter, and they store information about the host, port, and name of the connection, as well as the subscriptions of topics of interest. Furthermore, an edge provides functionality for sending pings to measure latency, and it can reset its performance statistics.
+        This class represents an Edge in a network graph, which is part of a ChaskiNode.
+        It encapsulates the necessary properties and methods for managing the state and
+        behavior of a network connection. Edges track connection details like latency
+        and jitter, and they store information about the IP, port, and name of the
+        connection, as well as the subscriptions of topics of interest. Furthermore,
+        an edge provides functionality for sending pings to measure latency, and it
+        can reset its performance statistics.
         """
         return f"{{{self.name}: {self.port}}}"
 
@@ -426,7 +481,7 @@ class ChaskiNode:
                 logger_main.warning("Timeout waiting for server to close.")
 
     # ----------------------------------------------------------------------
-    async def connect_to_peer(
+    async def _connect_to_peer(
         self,
         node: 'ChaskiNode',
         peer_port: Optional[int] = None,
@@ -444,7 +499,7 @@ class ChaskiNode:
         Parameters
         ----------
         node : 'ChaskiNode'
-            The target node instance or the host string to connect to.
+            The target node instance or the ip string to connect to.
         peer_port : Optional[int]
             The port number of the target node if the `node` parameter is not a `ChaskiNode` instance.
         paired : bool
@@ -452,29 +507,29 @@ class ChaskiNode:
         data : dict
             Additional data to include in the `report_paired` command if the connection is paired.
         """
-        if hasattr(node, "host"):
-            peer_host, peer_port = node.host, node.port
+        if hasattr(node, "ip"):
+            peer_ip, peer_port = node.ip, node.port
         else:
-            peer_host, peer_port = node, peer_port
+            peer_ip, peer_port = node, int(peer_port)
 
         # # Check if the node is trying to connect to itself
-        # if self.host == peer_host and self.port == peer_port:
+        # if self.ip == peer_ip and self.port == peer_port:
             # logger_main.warning(f"{self.name}: Impossible to connect a node to itself.")
             # return False
 
-        # Check if a connection to the peer host and port already exists
-        if (peer_host, peer_port, False) in [(edge.host, edge.port, edge.writer.is_closing()) for edge in self.edges]:
+        # Check if a connection to the peer ip and port already exists
+        if (peer_ip, peer_port, False) in [(edge.ip, edge.port, edge.writer.is_closing()) for edge in self.edges]:
             logger_main.warning(f"{self.name}: Already connected with this node.")
             return False
 
-        # Resolve address info for the specified host and port
-        addr_info = socket.getaddrinfo(peer_host, peer_port, socket.AF_UNSPEC, socket.SOCK_DGRAM)
+        # Resolve address info for the specified ip and port
+        addr_info = socket.getaddrinfo(peer_ip, peer_port, socket.AF_UNSPEC, socket.SOCK_DGRAM)
         if not addr_info:
-            raise ValueError(f"Cannot resolve address: {self.host}")
+            raise ValueError(f"Cannot resolve address: {self.ip}")
         family, socktype, proto, canonname, sockaddr = addr_info[0]
 
         # Establish a TCP connection to the peer node
-        reader, writer = await asyncio.open_connection(peer_host, peer_port, family=family)
+        reader, writer = await asyncio.open_connection(peer_ip, peer_port, family=family)
         edge = Edge(writer=writer, reader=reader)
 
         # Check if the connection should be marked as paired
@@ -494,16 +549,23 @@ class ChaskiNode:
         return True
 
     # ----------------------------------------------------------------------
-    async def connect(self) -> None:
+    async def connect(self, address_or_ip: str, port: Optional[int] = None,) -> None:
         """
         Connect to the node itself.
 
         This method initiates a connection to the current node. It uses the `connect_to_peer`
-        method to establish a TCP connection to its own host and port. This might be useful for
+        method to establish a TCP connection to its own ip and port. This might be useful for
         testing or special communication scenarios where a node needs to loop messages back
         to itself.
         """
-        await self.connect_to_peer(self)
+        if port:
+            ip, port = address_or_ip, port
+        else:
+            pattern = r"(?:(?:\*?\w+@)?(\d{1,3}(?:\.\d{1,3}){3})|(?:\*?\w+@)?\[((?:[0-9a-fA-F]{1,4}:){1,7}[0-9a-fA-F]{1,4})\]):(\d+)"
+            ipv4, ipv6, port = re.findall(pattern, address_or_ip)[0]
+            ip = ipv4 + ipv6
+
+        await self._connect_to_peer(ip, port)
 
     # ----------------------------------------------------------------------
     async def discovery(self, node: Optional['ChaskiNode'] = None, on_pair: Union[str, Literal['none', 'disconnect']] = 'none', timeout: int = 10) -> None:
@@ -558,13 +620,13 @@ class ChaskiNode:
         for subscription in unpaired_subscription:
 
             data = {
-                "origin_host": self.host,
+                "origin_ip": self.ip,
                 "origin_port": self.port,
                 "origin_name": self.name,
                 "previous_node": self.name,
                 "visited": set([self.name]),
                 "on_pair": on_pair,
-                "root_host": node.host,
+                "root_ip": node.ip,
                 "root_port": node.port,
                 "origin_subscription": subscription,
                 "ttl": self.ttl,
@@ -613,8 +675,8 @@ class ChaskiNode:
             if port:
                 edge = self.get_edge(edge, port)
 
-            # Check if the edge has missing host, port, or name attributes
-            if not bool(edge.host and edge.port and edge.name):
+            # Check if the edge has missing ip, port, or name attributes
+            if not bool(edge.ip and edge.port and edge.name):
                 self.name
 
             # Verify that provided edge instance is valid
@@ -645,7 +707,7 @@ class ChaskiNode:
                 # logger_main.warning(f"{self.name}: Orphan node detected.")
                 # logger_main.warning(f"{self.name}: Retrying connection.")
 
-                # status = await self._request_status(edge.host, edge.port)
+                # status = await self._request_status(edge.ip, edge.port)
                 # if status.data['serving']:
                     # try:
                         # await self.connect_to_peer(edge)
@@ -656,31 +718,31 @@ class ChaskiNode:
 
 
     # ----------------------------------------------------------------------
-    def get_edge(self, host: str, port: int) -> Optional[Edge]:
+    def get_edge(self, ip: str, port: int) -> Optional[Edge]:
         """
-        Retrieve an existing edge by its host and port.
+        Retrieve an existing edge by its ip and port.
 
-        This method looks up and returns an `Edge` instance that matches the given host
+        This method looks up and returns an `Edge` instance that matches the given ip
         and port. If no such edge is found, it returns `None`.
 
         Parameters
         ----------
-        host : str
-            The host IP address or hostname of the edge to find.
+        ip : str
+            The IP address of the edge to find.
         port : int
             The port number of the edge to find.
 
         Returns
         -------
         Optional[Edge]
-            The `Edge` instance with the specified host and port if found, else `None`.
+            The `Edge` instance with the specified ip and port if found, else `None`.
         """
         for edge_ in self.edges:
-            if (edge_.host == host) and (edge_.port == port):
+            if (edge_.ip == ip) and (edge_.port == port):
                 return edge_
 
     # ----------------------------------------------------------------------
-    async def connected(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+    async def _connected(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         """
         Handle an incoming TCP connection.
 
@@ -700,8 +762,12 @@ class ChaskiNode:
         logger_main.debug(f"{self.name}: New connection with {edge.address}.")
         asyncio.create_task(self._reader_loop(edge))
 
-        # Check if a connection to the peer host and port already exists
-        if (edge.host, edge.port, False) in [(edge_.host, edge_.port, edge_.writer.is_closing()) for edge_ in self.edges]:
+        # If there are no edges (connections) yet, designate this node as the root node
+        if not self.edges:
+            self.root = True
+
+        # Check if a connection to the peer ip and port already exists
+        if (edge.ip, edge.port, False) in [(edge_.ip, edge_.port, edge_.writer.is_closing()) for edge_ in self.edges]:
             logger_main.debug(f"{self.name}: Already connected with this node.")
             await self.close_connection(edge)
             return
@@ -831,8 +897,8 @@ class ChaskiNode:
                     pass
                 case 'disconnect':
                     # Handling node disconnection after pairing
-                    logger_main.debug(f"{self.name}: Disconnected after pairing with {message.data['root_host']} {message.data['root_port']}.")
-                    edge = self.get_edge(message.data['root_host'],
+                    logger_main.debug(f"{self.name}: Disconnected after pairing with {message.data['root_ip']} {message.data['root_port']}.")
+                    edge = self.get_edge(message.data['root_ip'],
                                          message.data['root_port'])
                     if edge and not edge.paired:
                         await self.close_connection(edge)
@@ -846,14 +912,14 @@ class ChaskiNode:
         """
         Configure and start the asyncio TCP server.
 
-        A coroutine that sets up and starts the asyncio TCP server on the host and port attributes of the ChaskiNode instance.
+        A coroutine that sets up and starts the asyncio TCP server on the ip and port attributes of the ChaskiNode instance.
         The server will handle incoming client connections using the 'connected' coroutine as the protocol factory. In addition,
         a background keep-alive task is started to manage node heartbeat and connectivity. The server will run until explicitly
         stopped or an unhandled exception occurs.
         """
         self.server = await asyncio.start_server(
-            self.connected,
-            self.host,
+            self._connected,
+            self.ip,
             self.port,
             reuse_address=True,
             reuse_port=True,
@@ -992,7 +1058,7 @@ class ChaskiNode:
         a pong response back to the sender if requested. The method updates the edge's
         latency measurements based on the round trip time of the ping-pong exchange if
         the latency_update flag in the message is set to True. It also sets the edge's
-        name, host, port, and subscriptions based on the information received in the
+        name, ip, port, and subscriptions based on the information received in the
         pong message.
 
         Parameters
@@ -1006,7 +1072,7 @@ class ChaskiNode:
         data = {
             "source_timestamp": message.timestamp,
             "name": self.name,
-            "host": self.host,
+            "ip": self.ip,
             "port": self.port,
             "subscriptions": self.subscriptions,
             "ping_id": message.data["ping_id"],
@@ -1028,13 +1094,18 @@ class ChaskiNode:
         """
         Process a pong message and update edge latency measurements.
 
-        This coroutine is triggered when a pong message is received in response to a ping request. It uses the time difference between the pong message's timestamp and the current time to calculate the round-trip latency. If the 'latency_update' flag in the message data is True, this latency value will be used to update the edge's latency statistics. Additionally, the edge's identifying information such as name, host, and port is updated based on the pong message data.
+        This coroutine is triggered when a pong message is received in response to a ping request.
+        It uses the time difference between the pong message's timestamp and the current time
+        to calculate the round-trip latency. If the 'latency_update' flag in the message
+        data is True, this latency value will be used to update the edge's latency statistics.
+        Additionally, the edge's identifying information such as name, ip, and port is updated
+        based on the pong message data.
 
         Parameters
         ----------
         message : Message
             The incoming pong message containing the original timestamp, sender's name,
-            host, port, and subscription information, as well as a unique identifier
+            ip, port, and subscription information, as well as a unique identifier
             for the ping event.
         edge : Edge
             The edge object representing the connection to the sender of the pong message.
@@ -1048,7 +1119,7 @@ class ChaskiNode:
 
         # Update the edge information with the details from the pong message
         server_edge.name = message.data["name"]
-        server_edge.host = message.data["host"]
+        server_edge.ip = message.data["ip"]
         server_edge.port = message.data["port"]
         server_edge.subscriptions = message.data["subscriptions"]
 
@@ -1099,14 +1170,14 @@ class ChaskiNode:
         ----------
         message : Message
             The handshake message received, containing the timestamp and data that
-            includes the peer's name, host, port, and subscription information.
+            includes the peer's name, ip, port, and subscription information.
         edge : Edge
             The edge associated with the peer node from which the handshake message was
             received, representing the communication connection to the peer.
         """
         data = {
             "name": self.name,
-            "host": self.host,
+            "ip": self.ip,
             "port": self.port,
             "subscriptions": self.subscriptions,
             "handshake_id": message.data["handshake_id"],
@@ -1125,7 +1196,7 @@ class ChaskiNode:
         Handle a handshake response (back) from a peer node after an initial handshake.
 
         This coroutine is invoked upon receiving a handshake response from a peer node
-        in the network. It updates the edge information with the name, host, port, and
+        in the network. It updates the edge information with the name, ip, port, and
         subscriptions of the responding node and adds the edge to the server's active
         connections list.
 
@@ -1142,7 +1213,7 @@ class ChaskiNode:
         # Update server edge details after receiving handshake back
         server_edge = self.handshake_events.pop(message.data["handshake_id"])
         server_edge.name = message.data["name"]
-        server_edge.host = message.data["host"]
+        server_edge.ip = message.data["ip"]
         server_edge.port = message.data["port"]
         server_edge.subscriptions = message.data["subscriptions"]
 
@@ -1173,16 +1244,15 @@ class ChaskiNode:
             The edge where the discovery message was received from. It may be used to avoid
             sending the discovery message back to the sender. Defaults to None.
         """
-
         subscription = message.data["origin_subscription"]
 
         # Check if all subscriptions are paired
-        if not all([self.paired_event[sub].is_set() for sub in self.subscriptions]):
+        if not self.paired:
             return
 
         # Check the status of the origin node
         status = await self._request_status(
-            message.data["origin_host"],
+            message.data["origin_ip"],
             message.data["origin_port"],
         )
 
@@ -1200,8 +1270,8 @@ class ChaskiNode:
         if (len(self.edges) < self.max_connections) and (subscription in self.subscriptions):
 
             # Attempt connection to peer node with the given subscription
-            await self.connect_to_peer(
-                message.data["origin_host"],
+            await self._connect_to_peer(
+                message.data["origin_ip"],
                 message.data["origin_port"],
                 paired=subscription,
                 data=message.data,
@@ -1265,17 +1335,17 @@ class ChaskiNode:
         # Start the asyncio event loop to handle incoming UDP datagrams
         loop = asyncio.get_running_loop()
 
-        # Resolve address info for the specified host and port
-        addr_info = socket.getaddrinfo(self.host, self.port, socket.AF_UNSPEC, socket.SOCK_DGRAM)
+        # Resolve address info for the specified ip and port
+        addr_info = socket.getaddrinfo(self.ip, self.port, socket.AF_UNSPEC, socket.SOCK_DGRAM)
         if not addr_info:
-            raise ValueError(f"Cannot resolve address: {self.host}")
+            raise ValueError(f"Cannot resolve address: {self.ip}")
         family, socktype, proto, canonname, sockaddr = addr_info[0]
         sock = socket.socket(family, socktype, proto)
 
         # Set socket options to allow address and port reuse
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-        sock.bind((self.host, self.port))
+        sock.bind((self.ip, self.port))
         transport, protocol = await loop.create_datagram_endpoint(
             lambda: UDPProtocol(self, self._process_udp_message), sock=sock
         )
@@ -1286,11 +1356,11 @@ class ChaskiNode:
         self.request_response_multiplexer_events = {}
 
     # ----------------------------------------------------------------------
-    async def _send_udp_message(self, command: str, message: Any, dest_host: str, dest_port: int) -> None:
+    async def _send_udp_message(self, command: str, message: Any, dest_ip: str, dest_port: int) -> None:
         """
-        Send a UDP message to the specified destination host and port.
+        Send a UDP message to the specified destination ip and port.
 
-        This coroutine sends a pre-formatted message over UDP to a given destination host and port. It serializes the
+        This coroutine sends a pre-formatted message over UDP to a given destination ip and port. It serializes the
         message, which includes a command and its associated data, before transmission. This method is utilized for
         communication protocols that require UDP for message passing, like status checks or discovery procedures.
 
@@ -1300,14 +1370,14 @@ class ChaskiNode:
             The command type that dictates the kind of operation to perform, included in the message.
         message : Any
             The payload associated with the command that contains data necessary for carrying out the operation.
-        dest_host : str
-            The destination host's IP address or hostname to which the message will be sent.
+        dest_ip : str
+            The destination IP address to which the message will be sent.
         dest_port : int
             The port number on the destination host to which the message should be directed.
         """
         message = Message(command=command, data=message, timestamp=datetime.now())
         data = self.serializer(message)
-        self.udp_transport.sendto(data, (dest_host, dest_port))
+        self.udp_transport.sendto(data, (dest_ip, dest_port))
 
     # ----------------------------------------------------------------------
     async def _process_udp_message(self, data: bytes, addr: Tuple[str, int]) -> None:
@@ -1340,7 +1410,7 @@ class ChaskiNode:
 
             # Process the "status" command received via UDP
             case "status":
-                data = self.get_status(id=message.data["id"])
+                data = self._get_status(id=message.data["id"])
                 await self._send_udp_message("response", data, *addr[:2])
 
             # Process the "response" command
@@ -1351,19 +1421,19 @@ class ChaskiNode:
 
 
     # ----------------------------------------------------------------------
-    async def _request_status(self, dest_host: str, dest_port: int) -> Message:
+    async def _request_status(self, dest_ip: str, dest_port: int) -> Message:
         """
         Request the status of a node via UDP and wait for a response.
 
-        This asynchronous method sends a UDP message to the target host and port,
+        This asynchronous method sends a UDP message to the target ip and port,
         requesting its status. It generates a unique identifier for the request, sends
         the message, and then waits for a response that matches the identifier. Once
         the response is received, it is returned as a Message object.
 
         Parameters
         ----------
-        dest_host : str
-            The hostname or IP address of the destination node to query for status.
+        dest_ip : str
+            The IP address of the destination node to query for status.
         dest_port : int
             The port number of the destination node to communicate the status request.
 
@@ -1383,7 +1453,7 @@ class ChaskiNode:
         data = {"id": id_}
 
         # Send the status request message
-        await self._send_udp_message("status", data, dest_host, dest_port)
+        await self._send_udp_message("status", data, dest_ip, dest_port)
 
         # Wait for the response to be received
         await self.request_response_multiplexer_events[id_].wait()
@@ -1429,7 +1499,7 @@ class ChaskiNode:
         Remove duplicate connections from the server pairs.
 
         Iterates over the list of server pairs and closes connections that have
-        the same host and port as an already seen connection. This ensures that each
+        the same ip and port as an already seen connection. This ensures that each
         peer is connected to the node only once, avoiding redundant connections.
 
         """
@@ -1438,12 +1508,12 @@ class ChaskiNode:
 
         for edge in self.edges:
 
-            # Check if both edge.host and edge.port are available
-            if not (edge.host and edge.port):
+            # Check if both edge.ip and edge.port are available
+            if not (edge.ip and edge.port):
                 continue
 
             # Check for duplicates and remove if found
-            connection = (edge.host, edge.port)
+            connection = (edge.ip, edge.port)
             if connection not in seen_connections:
                 seen_connections.add(connection)
             else:
@@ -1456,7 +1526,7 @@ class ChaskiNode:
         Check if this node is connected to another specified node.
 
         Determines whether the current ChaskiNode instance has an established TCP connection
-        with the given node. It checks the server pairs list for a matching host and port
+        with the given node. It checks the server pairs list for a matching ip and port
         pair to confirm connectivity.
 
         Parameters
@@ -1470,12 +1540,35 @@ class ChaskiNode:
             `True` if the current node is connected to the specified node; otherwise, `False`.
 
         """
-        return (node.host, node.port) in [(edge.host, edge.port) for edge in self.edges]
+        return (node.ip, node.port) in [(edge.ip, edge.port) for edge in self.edges]
 
 
     # ----------------------------------------------------------------------
-    def get_status(self, **kwargs):
-        """"""
+    def _get_status(self, **kwargs) -> dict:
+        """
+        Retrieve the status of the node.
+
+        This method compiles and returns a dictionary containing the current status
+        details of the node. The status includes information about the node's
+        paired events for each subscription, whether the server is closing,
+        and whether the node is in the process of attempting to reconnect.
+
+        Parameters
+        ----------
+        **kwargs : dict, optional
+            Additional status information that can be passed as key-value pairs and
+            will be included in the returned status dictionary.
+
+        Returns
+        -------
+        dict
+            A dictionary containing the status details of the node. The keys include:
+            - 'paired': A dictionary where keys are subscription topics and values are boolean
+                        indicating whether the node is paired for that subscription.
+            - 'serving': Boolean value indicating whether the server is closing (`False`) or not (`True`).
+            - 'reconnecting': Boolean value indicating whether the node is currently attempting to
+                              reconnect to a peer (`True`) or not (`False`).
+        """
         return {
             # Get the status of paired events for each subscription
             "paired": {sub:self.paired_event[sub].is_set() for sub in self.subscriptions},
@@ -1483,8 +1576,35 @@ class ChaskiNode:
             # Check if the server is closing; 'True' means it's still serving.
             "serving": not self.server_closing,
 
+            # Check if the node's reconnecting event is currently set, implying it is trying to reconnect to a peer.
+            "reconnecting": self.reconnecting.is_set(),
+
             **kwargs
         }
+
+    # ----------------------------------------------------------------------
+    @property
+    def status(self) -> dict:
+        """
+        Retrieve the current status of the ChaskiNode.
+
+        This property compiles and returns a dictionary containing the current status
+        details of the node. The status includes information about the node's
+        paired events for each subscription, whether the server is closing,
+        and whether the node is in the process of attempting to reconnect.
+
+        Returns
+        -------
+        dict
+            A dictionary containing the status details of the node. The keys include:
+            - 'paired': A dictionary where keys are subscription topics and values are boolean
+                        indicating whether the node is paired for that subscription.
+            - 'serving': Boolean value indicating whether the server is closing (`False`) or not (`True`).
+            - 'reconnecting': Boolean value indicating whether the node is currently attempting to
+                              reconnect to a peer (`True`) or not (`False`).
+        """
+        return self._get_status()
+
 
     # ----------------------------------------------------------------------
     async def try_to_reconnect(self, edge: Edge) -> None:
@@ -1502,13 +1622,98 @@ class ChaskiNode:
             The edge to which the reconnection attempts will be made. This represents the lost connection that needs
             to be restored.
         """
+        # If the reconnection attempt limit is set to zero, skip reconnection
+        if not self.reconnections:
+            self.reconnecting.clear()
+            return
+
         attempt = 0
+        self.reconnecting.set()
         while True:
             attempt += 1
-            await asyncio.sleep(1)
+            # Pause execution for 5 seconds before the next reconnection attempt
+            await asyncio.sleep(5)
             try:
-                await self.connect_to_peer(edge)
-                return
+                logger_main.debug(f"{self.name}: Reconnecting with {edge}")
+                await self._connect_to_peer(edge)
+                break
             except Exception as e:
                 logger_main.debug(f"{self.name}: Reconnection attempt {attempt + 1} failed: {e}")
 
+            if attempt >= self.reconnections:
+                break  # Stop attempting to reconnect after reaching the maximum allowed reconnections
+
+        # Clear the 'reconnecting' event, indicating that reconnection attempts are complete
+        self.reconnecting.clear()
+
+    # ----------------------------------------------------------------------
+    def get_free_port(self) -> int:
+        """
+        Get a free port for the node to use.
+
+        This method creates a temporary socket to bind to a port with value 0, which
+        causes the operating system to allocate an available port. Once the socket is bound,
+        the port number assigned by the operating system is retrieved and the socket is
+        closed. This port number can be used for subsequent network operations requiring
+        a free and available port.
+
+        Returns
+        -------
+        int
+            The port number assigned by the operating system that is free and available for use.
+        """
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            # Bind the socket to an empty string and port 0 to let the OS automatically select a free port.
+            s.bind(('', 0))
+            s.listen(1)
+            port = s.getsockname()[1]
+        return port
+
+    # ----------------------------------------------------------------------
+    def is_port_available(self, port: int) -> bool:
+        """
+        Check if a specific port is available for use.
+
+        This method attempts to bind to a given port to determine if it is available
+        for use. It creates a temporary socket and tries to bind it to the specified
+        port on the current node's ip. If the binding is successful, the port is
+        considered available. Otherwise, it is in use.
+
+        Parameters
+        ----------
+        port : int
+            The port number to check for availability.
+
+        Returns
+        -------
+        bool
+            `True` if the port is available; `False` if the port is already in use.
+
+        Raises
+        ------
+        OSError
+            If the port binding operation encounters an error other than the port being in use.
+        """
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind((self.ip, port))
+                s.listen(1)  # Start listening for incoming connections on the assigned port with a backlog of 1
+                return True
+            except OSError:
+                return False
+
+    # ----------------------------------------------------------------------
+    @property
+    def paired(self) -> bool:
+        """
+        Check if the node is paired for all its subscriptions.
+
+        This property returns a boolean value indicating whether the node is paired
+        for all the subscriptions it subscribes to.
+
+        Returns
+        -------
+        bool
+            `True` if the node is paired for all subscriptions, otherwise `False`.
+        """
+        return all([self.paired_event[sub].is_set() for sub in self.subscriptions])
