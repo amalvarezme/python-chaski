@@ -125,7 +125,7 @@ class TestSubscriptions(unittest.IsolatedAsyncioTestCase):
         """
         nodes = await create_nodes(['A', 'B', 'C', 'A', 'B', 'C'])
         for node in nodes[1:]:
-            await node.connect_to_peer(nodes[0])
+            await node._connect_to_peer(nodes[0])
 
         await asyncio.sleep(0.3)
         for node in nodes[1:]:
@@ -138,13 +138,12 @@ class TestSubscriptions(unittest.IsolatedAsyncioTestCase):
 
         self._close_nodes(nodes)
 
-
     # ----------------------------------------------------------------------
     async def test_single_subscription_with_disconnect(self):
         """"""
         nodes = await create_nodes(['A', 'B', 'C', ['A', 'C'], ['B', 'A'], 'C'])
         for node in nodes[1:]:
-            await node.connect_to_peer(nodes[0])
+            await node._connect_to_peer(nodes[0])
 
         await asyncio.sleep(0.3)
         for node in nodes[1:]:

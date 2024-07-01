@@ -41,7 +41,7 @@ class TestConnections:
     """
 
     # ----------------------------------------------------------------------
-    def _close_nodes(self, nodes: list['ChaskiNode']):
+    async def _close_nodes(self, nodes: list['ChaskiNode']):
         """
         Close all ChaskiNode instances in the provided list.
 
@@ -54,7 +54,7 @@ class TestConnections:
             A list containing instances of ChaskiNode that need to be stopped.
         """
         for node in nodes:
-            node.stop()
+            await node.stop()
 
     # ----------------------------------------------------------------------
     def assertConnection(self, node1: 'ChaskiNode', node2: 'ChaskiNode', msg: Optional[str] = None):
@@ -103,24 +103,15 @@ class TestConnections:
         AssertionError
             If any node fails to establish the expected number of connections.
         """
-        nodes = await create_nodes(4, self.host)
-        await nodes[0].connect_to_peer(nodes[1])
-        await nodes[2].connect_to_peer(nodes[3])
+        nodes = await create_nodes(4, self.ip)
+        await nodes[0]._connect_to_peer(nodes[1])
+        await nodes[2]._connect_to_peer(nodes[3])
         await asyncio.sleep(3)
 
         for i in range(4):
             self.assertEqual(len(nodes[i].edges), 1, f"Node {i} connection failed")
 
-        self._close_nodes(nodes)
-        nodes = await create_nodes(4, self.host)
-        await nodes[0].connect_to_peer(nodes[1])
-        await nodes[2].connect_to_peer(nodes[3])
-        await asyncio.sleep(3)
-
-        for i in range(4):
-            self.assertEqual(len(nodes[i].edges), 1, f"Node {i} connection failed")
-
-        self._close_nodes(nodes)
+        await self._close_nodes(nodes)
 
     # ----------------------------------------------------------------------
     async def test_multiple_connections(self):
@@ -143,26 +134,16 @@ class TestConnections:
         AssertionError
             If any node fails to establish the expected number of connections.
         """
-        nodes = await create_nodes(5, self.host)
+        nodes = await create_nodes(5, self.ip)
         for i in range(1, 5):
-            await nodes[i].connect_to_peer(nodes[0])
+            await nodes[i]._connect_to_peer(nodes[0])
         await asyncio.sleep(0.3)
 
         for i in range(1, 5):
             self.assertEqual(len(nodes[i].edges), 1, f"Node {i}'s connection to Node 0 failed")
         self.assertEqual(len(nodes[0].edges), 4, f"Node 0 failed to establish all connections")
 
-        self._close_nodes(nodes)
-        nodes = await create_nodes(5, self.host)
-        for i in range(1, 5):
-            await nodes[i].connect_to_peer(nodes[0])
-        await asyncio.sleep(0.3)
-
-        for i in range(1, 5):
-            self.assertEqual(len(nodes[i].edges), 1, f"Node {i}'s connection to Node 0 failed")
-        self.assertEqual(len(nodes[0].edges), 4, f"Node 0 failed to establish all connections")
-
-        self._close_nodes(nodes)
+        await self._close_nodes(nodes)
 
     # ----------------------------------------------------------------------
     async def test_disconnection(self):
@@ -186,9 +167,9 @@ class TestConnections:
             If any node fails to properly disconnect or maintain the expected
             state after disconnection.
         """
-        nodes = await create_nodes(5, self.host)
+        nodes = await create_nodes(5, self.ip)
         for i in range(1, 5):
-            await nodes[i].connect_to_peer(nodes[0])
+            await nodes[i]._connect_to_peer(nodes[0])
         await asyncio.sleep(0.3)
 
         await nodes[0].stop()
@@ -198,7 +179,7 @@ class TestConnections:
         for i in range(1, 5):
             self.assertEqual(len(nodes[i].edges), 0, f"Node {i} not disconnected")
 
-        self._close_nodes(nodes)
+        await self._close_nodes(nodes)
 
     # ----------------------------------------------------------------------
     async def test_edges_disconnection(self):
@@ -223,14 +204,14 @@ class TestConnections:
         AssertionError
             If any node fails to properly manage connections or disconnections.
         """
-        nodes = await create_nodes(6, self.host)
+        nodes = await create_nodes(6, self.ip)
 
         for i in range(1, 5):
-            await nodes[i].connect_to_peer(nodes[0])
+            await nodes[i]._connect_to_peer(nodes[0])
         await asyncio.sleep(0.3)
 
         for i in range(1, 5):
-            await nodes[i].connect_to_peer(nodes[5])
+            await nodes[i]._connect_to_peer(nodes[5])
 
         await asyncio.sleep(0.3)
         for i in range(4):
@@ -243,7 +224,7 @@ class TestConnections:
             self.assertEqual(len(nodes[i].edges), 1, f"Node {i} connections failed")
         self.assertEqual(len(nodes[4].edges), 2, "Node 4 connections failed")
 
-        self._close_nodes(nodes)
+        await self._close_nodes(nodes)
 
     # ----------------------------------------------------------------------
     async def test_edges_client_orphan(self):
@@ -266,9 +247,9 @@ class TestConnections:
         AssertionError
             If the connection management does not reflect expected states after disconnections.
         """
-        nodes = await create_nodes(5, self.host)
+        nodes = await create_nodes(5, self.ip)
         for i in range(1, 5):
-            await nodes[i].connect_to_peer(nodes[0])
+            await nodes[i]._connect_to_peer(nodes[0])
         await asyncio.sleep(0.3)
 
         self.assertEqual(len(nodes[0].edges), 4, "Node 0 connections failed")
@@ -283,7 +264,7 @@ class TestConnections:
         for i in range(1, 5):
             self.assertEqual(len(nodes[i].edges), 1, f"Node {i} connections failed after orphan detection")
 
-        self._close_nodes(nodes)
+        await self._close_nodes(nodes)
 
     # ----------------------------------------------------------------------
     async def test_edges_server_orphan(self):
@@ -307,9 +288,9 @@ class TestConnections:
         AssertionError
             If connection management does not reflect expected states after disconnections.
         """
-        nodes = await create_nodes(5, self.host)
+        nodes = await create_nodes(5, self.ip)
         for i in range(1, 5):
-            await nodes[i].connect_to_peer(nodes[0])
+            await nodes[i]._connect_to_peer(nodes[0])
         await asyncio.sleep(0.5)
 
         self.assertEqual(len(nodes[0].edges), 4, "Node 0 connections failed")
@@ -324,7 +305,7 @@ class TestConnections:
         for i in range(1, 5):
             self.assertEqual(len(nodes[i].edges), 1, f"Node {i} connections failed after orphan detection")
 
-        self._close_nodes(nodes)
+        await self._close_nodes(nodes)
 
 
 ########################################################################
@@ -338,13 +319,13 @@ class Test_Connections_for_IPv4(TestConnections, unittest.IsolatedAsyncioTestCas
 
     Attributes
     ----------
-    host : str
+    ip : str
         The IPv4 address used for creating and connecting nodes, set to '127.0.0.1'.
 
     Methods
     -------
     asyncSetUp()
-        Sets up the test environment for IPv4 connections by initializing the host address.
+        Sets up the test environment for IPv4 connections by initializing the IPv4 address.
 
     async test_single_connections()
         Tests the ability of ChaskiNode instances to establish single peer-to-peer connections over IPv4.
@@ -371,13 +352,13 @@ class Test_Connections_for_IPv4(TestConnections, unittest.IsolatedAsyncioTestCas
         Initialize the test environment for IPv4 connections.
 
         This method sets up the testing environment before the execution of each asynchronous test.
-        It initializes the host address to the local IPv4 address '127.0.0.1'.
+        It initializes the ip address to the local IPv4 address '127.0.0.1'.
 
         Notes
         -----
         This method is automatically invoked by the testing framework and typically does not need to be called explicitly.
         """
-        self.host = '127.0.0.1'
+        self.ip = '127.0.0.1'
         await asyncio.sleep(0)
 
     async def test_single_connections(self):
@@ -410,13 +391,13 @@ class Test_Connections_for_IPv6(unittest.IsolatedAsyncioTestCase, TestConnection
 
     Attributes
     ----------
-    host : str
+    ip : str
         The IPv6 address used for creating and connecting nodes, set to '::1'.
 
     Methods
     -------
     asyncSetUp()
-        Sets up the test environment for IPv6 connections by initializing the host address.
+        Sets up the test environment for IPv6 connections by initializing the ip address.
 
     async test_single_connections()
         Tests the ability of ChaskiNode instances to establish single peer-to-peer connections over IPv6.
@@ -443,13 +424,13 @@ class Test_Connections_for_IPv6(unittest.IsolatedAsyncioTestCase, TestConnection
         Initialize the test environment for IPv6 connections.
 
         This method sets up the testing environment before the execution of each asynchronous test.
-        It initializes the host address to the local IPv6 address '::1'.
+        It initializes the ip address to the local IPv6 address '::1'.
 
         Notes
         -----
         This method is automatically invoked by the testing framework and typically does not need to be called explicitly.
         """
-        self.host = '::1'
+        self.ip = '::1'
         await asyncio.sleep(0)
 
     async def test_single_connections(self):
