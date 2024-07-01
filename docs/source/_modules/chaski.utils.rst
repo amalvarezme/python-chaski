@@ -12,4 +12,5 @@ Submodules
 .. toctree::
    :maxdepth: 4
 
+   chaski.utils.auto
    chaski.utils.viz
