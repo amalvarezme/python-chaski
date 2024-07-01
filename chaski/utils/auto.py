@@ -1,3 +1,13 @@
+"""
+====================
+Automation Utilities
+====================
+
+This module provides a set of automated utilities specifically designed for
+creating and managing ChaskiNode instances. These utilities streamline the setup
+of distributed node communication and coordination systems.
+"""
+
 from chaski.node import ChaskiNode
 from typing import List, Union
 import asyncio
@@ -7,7 +17,7 @@ PORT = 65432
 
 
 # ----------------------------------------------------------------------
-async def create_nodes(subscriptions: Union[int, List[str]], host: str = '127.0.0.1', port: int = PORT) -> List[ChaskiNode]:
+async def create_nodes(subscriptions: Union[int, List[str]], ip: str = '127.0.0.1', port: int = PORT) -> List[ChaskiNode]:
     """
     Create a list of ChaskiNode instances.
 
@@ -21,8 +31,8 @@ async def create_nodes(subscriptions: Union[int, List[str]], host: str = '127.0.
     subscriptions : Union[int, List[str]]
         The number of nodes to create if an integer is provided. If a list of strings is
         provided, each string represents a subscription topic for a node.
-    host : str, optional
-        The host IP address or hostname where the nodes will bind to, by default '127.0.0.1'.
+    ip : str, optional
+        The IP address where the nodes will bind to, by default '127.0.0.1'.
     port : int, optional
         The starting port number for the nodes, by default PORT.
 
@@ -35,13 +45,14 @@ async def create_nodes(subscriptions: Union[int, List[str]], host: str = '127.0.
         subscriptions = list(ascii_uppercase)[:subscriptions]
 
     nodes = [ChaskiNode(
-        host=host,
+        ip=ip,
         port=port + i,
         name=f'Node{i}',
         subscriptions=sub,
         run=True,
         ttl=15,
-        root=(i == 0)
+        root=(i == 0),
+        reconnections=None,
     ) for i, sub in enumerate(subscriptions)]
     port += len(subscriptions) + 1
 
