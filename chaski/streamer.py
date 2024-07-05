@@ -60,7 +60,7 @@ class ChaskiStreamer(ChaskiNode):
         such as the IP address and port. If the instance is a root node, it prepends an
         asterisk (*) to the string.
         """
-        h = '*' if self.root else ''
+        h = '*' if self.paired else ''
         return f"{h}ChaskiStreamer@{self.ip}:{self.port}"
 
     # ----------------------------------------------------------------------
