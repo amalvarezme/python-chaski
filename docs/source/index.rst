@@ -10,7 +10,8 @@ Documentation Overview
    :maxdepth: 2
    :name: mastertoc
 
-   notebooks/01-chaski_node
+   notebooks/01-chaski_node.pct
+   notebooks/02-chaski_streamer.ptc
 
 
 

@@ -117,3 +117,8 @@ autodoc_mock_imports = [
 
 def setup(app):
     app.add_css_file('custom_chaski.css')
+
+
+# nbsphinx_custom_formats = {
+    # '.pct.py': ['jupytext.reads', {'fmt': 'py:percent'}],
+# }
