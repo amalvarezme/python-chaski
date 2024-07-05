@@ -18,4 +18,6 @@ import sys
 sys.path.append('../../..')
 
 # %% [markdown]
-# # ChaskiStreamer: The gateway to efficient and scalable message streaming in distributed networks
+# # ChaskiStreamer: Scalable Message Streaming in Distributed Networks
+
+# %%
