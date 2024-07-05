@@ -433,7 +433,8 @@ class ChaskiNode:
         an edge provides functionality for sending pings to measure latency, and it
         can reset its performance statistics.
         """
-        return f"{{{self.name}: {self.port}}}"
+        h = '*' if self.paired else ''
+        return f"{h}ChaskiNode@{self.ip}:{self.port}"
 
     # ----------------------------------------------------------------------
     async def run(self) -> None:
@@ -549,20 +550,41 @@ class ChaskiNode:
         return True
 
     # ----------------------------------------------------------------------
-    async def connect(self, address_or_ip: str, port: Optional[int] = None,) -> None:
+    async def connect(self, address_or_ip_or_node: Union[str, 'ChaskiNode'], port: Optional[int] = None) -> None:
         """
-        Connect to the node itself.
+        Establish a connection to the specified node or address.
 
-        This method initiates a connection to the current node. It uses the `connect_to_peer`
-        method to establish a TCP connection to its own ip and port. This might be useful for
-        testing or special communication scenarios where a node needs to loop messages back
-        to itself.
+        This method initiates a TCP connection to a specified node or an IP address and port.
+        It leverages the `_connect_to_peer` method to create the connection. The input can be an
+        instance of `ChaskiNode`, a string representing the IP address, or an address string in
+        the format "ip:port" or "[ipv6]:port".
+
+        Parameters
+        ----------
+        address_or_ip_or_node : Union[str, ChaskiNode]
+            The target node instance or IP string to connect to. Acceptable formats include:
+            - ChaskiNode instance
+            - IP address string (e.g., "192.168.1.1")
+            - Address string with port (e.g., "192.168.1.1:65432" or "[2001:db8::1]:65432")
+        port : Optional[int]
+            The port number of the target node if an IP address string is provided. Ignored if `address_or_ip_or_node`
+            includes port information or is a `ChaskiNode` instance.
+
+        Raises
+        ------
+        ValueError
+            If the address cannot be resolved.
+
         """
         if port:
-            ip, port = address_or_ip, port
+            ip, port = address_or_ip_or_node, port
+
+        elif hasattr(address_or_ip_or_node, "ip"):
+            ip, port = address_or_ip_or_node.ip, address_or_ip_or_node.port
+
         else:
             pattern = r"(?:(?:\*?\w+@)?(\d{1,3}(?:\.\d{1,3}){3})|(?:\*?\w+@)?\[((?:[0-9a-fA-F]{1,4}:){1,7}[0-9a-fA-F]{1,4})\]):(\d+)"
-            ipv4, ipv6, port = re.findall(pattern, address_or_ip)[0]
+            ipv4, ipv6, port = re.findall(pattern, address_or_ip_or_node)[0]
             ip = ipv4 + ipv6
 
         await self._connect_to_peer(ip, port)
@@ -646,7 +668,7 @@ class ChaskiNode:
                 if self.paired_event[subscription].is_set():
                     break
             if time.time() > t0 + timeout:
-                logger_main.warning(f"{self.name}: Timeout reached during discovery process for subscription {subscription}, node is considered paired.")
+                logger_main.debug(f"{self.name}: Timeout reached during discovery process for subscription {subscription}, node is considered paired.")
             self.paired_event[subscription].set()
 
     # ----------------------------------------------------------------------
