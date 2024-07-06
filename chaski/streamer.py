@@ -61,7 +61,23 @@ class ChaskiStreamer(ChaskiNode):
         asterisk (*) to the string.
         """
         h = '*' if self.paired else ''
-        return f"{h}ChaskiStreamer@{self.ip}:{self.port}"
+        return h + self.address
+
+    # ----------------------------------------------------------------------
+    @property
+    def address(self) -> str:
+        """
+        Get the address of the ChaskiStreamer instance.
+
+        This property returns the address of the ChaskiStreamer in the format
+        "ChaskiStreamer@ip:port".
+
+        Returns
+        -------
+        str
+            A string representation of the ChaskiStreamer address.
+        """
+        return f"ChaskiStreamer@{self.ip}:{self.port}"
 
     # ----------------------------------------------------------------------
     async def __aenter__(self) -> Generator[Message, None, None]:
@@ -134,7 +150,7 @@ class ChaskiStreamer(ChaskiNode):
         await self.message_queue.put(message)
 
     # ----------------------------------------------------------------------
-    async def write(self, topic: str, data: bytes = None) -> None:
+    async def push(self, topic: str, data: bytes = None) -> None:
         """
         Write a message to the specified topic.
 
