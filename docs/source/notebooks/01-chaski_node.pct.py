@@ -42,7 +42,7 @@ import pickle
 
 # This block initializes a ChaskiNode with specific parameters for network communication and management.
 node = ChaskiNode(
-  ip='127.0.0.1',                           # The IP address for the node to bind to.
+    ip='127.0.0.1',                         # The IP address for the node to bind to.
     port=65432,                             # The port number for the node to listen on.
     serializer=pickle.dumps,                # Function to serialize data before sending.
     deserializer=pickle.loads,              # Function to deserialize received data.
