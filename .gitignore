@@ -160,3 +160,7 @@ cython_debug/
 #.idea/
 
 docs/build/
+
+*.wpu
+*.wpr
+_sandbox/
