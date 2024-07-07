@@ -16,7 +16,7 @@ Classes
 
 from asyncio import Queue
 from typing import Generator
-from chaski.node import ChaskiNode, Edge, Message
+from chaski.node import ChaskiNode
 
 
 ########################################################################
@@ -80,7 +80,7 @@ class ChaskiStreamer(ChaskiNode):
         return f"ChaskiStreamer@{self.ip}:{self.port}"
 
     # ----------------------------------------------------------------------
-    async def __aenter__(self) -> Generator[Message, None, None]:
+    async def __aenter__(self) -> Generator['Message', None, None]:
         """
         Enter the asynchronous context for streaming messages.
 
@@ -96,7 +96,12 @@ class ChaskiStreamer(ChaskiNode):
         return self.message_stream()
 
     # ----------------------------------------------------------------------
-    async def __aexit__(self, exception_type: type, exception_value: BaseException, exception_traceback: 'TracebackType') -> None:
+    async def __aexit__(
+        self,
+        exception_type: type,
+        exception_value: BaseException,
+        exception_traceback: 'TracebackType',
+    ) -> None:
         """
         Exit the runtime context related to this object and stop the streamer.
 
@@ -124,7 +129,7 @@ class ChaskiStreamer(ChaskiNode):
         self.stop()
 
     # ----------------------------------------------------------------------
-    async def _process_ChaskiMessage(self, message: Message, edge: Edge) -> None:
+    async def _process_ChaskiMessage(self, message: 'Message', edge: 'Edge') -> None:
         """
         Process an incoming Chaski message and place it onto the message queue.
 
@@ -164,10 +169,9 @@ class ChaskiStreamer(ChaskiNode):
             The byte-encoded data to be sent with the message. This could be any binary payload that subscribers are expected to process.
         """
         await self._write('ChaskiMessage', data=data, topic=topic)
-        await self._write('ChaskiMessage', data=data, topic=topic)
 
     # ----------------------------------------------------------------------
-    async def message_stream(self) -> Generator[Message, None, None]:
+    async def message_stream(self) -> Generator['Message', None, None]:
         """
         Asynchronously generate messages from the message queue.
 
