@@ -57,7 +57,9 @@ class TestConnections:
             await node.stop()
 
     # ----------------------------------------------------------------------
-    def assertConnection(self, node1: 'ChaskiNode', node2: 'ChaskiNode', msg: Optional[str] = None):
+    def assertConnection(
+        self, node1: 'ChaskiNode', node2: 'ChaskiNode', msg: Optional[str] = None
+    ):
         """
         Assert that two ChaskiNodes are connected to each other.
 
@@ -140,8 +142,12 @@ class TestConnections:
         await asyncio.sleep(0.3)
 
         for i in range(1, 5):
-            self.assertEqual(len(nodes[i].edges), 1, f"Node {i}'s connection to Node 0 failed")
-        self.assertEqual(len(nodes[0].edges), 4, f"Node 0 failed to establish all connections")
+            self.assertEqual(
+                len(nodes[i].edges), 1, f"Node {i}'s connection to Node 0 failed"
+            )
+        self.assertEqual(
+            len(nodes[0].edges), 4, f"Node 0 failed to establish all connections"
+        )
 
         await self._close_nodes(nodes)
 
@@ -217,7 +223,9 @@ class TestConnections:
         for i in range(4):
             await nodes[0].close_connection(nodes[0].edges[0])
             await asyncio.sleep(0.3)
-            self.assertEqual(len(nodes[0].edges), max(3 - i, 1), "Node 0 connections failed")
+            self.assertEqual(
+                len(nodes[0].edges), max(3 - i, 1), "Node 0 connections failed"
+            )
 
         await asyncio.sleep(0.3)
         for i in range(1, 4):
@@ -260,9 +268,15 @@ class TestConnections:
             await nodes[i].close_connection(nodes[i].edges[0])
 
         await asyncio.sleep(0.3)
-        self.assertEqual(len(nodes[0].edges), 4, "Node 0 connections failed after orphan detection")
+        self.assertEqual(
+            len(nodes[0].edges), 4, "Node 0 connections failed after orphan detection"
+        )
         for i in range(1, 5):
-            self.assertEqual(len(nodes[i].edges), 1, f"Node {i} connections failed after orphan detection")
+            self.assertEqual(
+                len(nodes[i].edges),
+                1,
+                f"Node {i} connections failed after orphan detection",
+            )
 
         await self._close_nodes(nodes)
 
@@ -301,9 +315,51 @@ class TestConnections:
             await nodes[0].close_connection(edge)
 
         await asyncio.sleep(0.3)
-        self.assertEqual(len(nodes[0].edges), 4, "Node 0 connections failed after orphan detection")
+        self.assertEqual(
+            len(nodes[0].edges), 4, "Node 0 connections failed after orphan detection"
+        )
         for i in range(1, 5):
-            self.assertEqual(len(nodes[i].edges), 1, f"Node {i} connections failed after orphan detection")
+            self.assertEqual(
+                len(nodes[i].edges),
+                1,
+                f"Node {i} connections failed after orphan detection",
+            )
+
+        await self._close_nodes(nodes)
+
+    # ----------------------------------------------------------------------
+    async def test_response_udp(self):
+        """
+        Test the UDP response mechanism of ChaskiNodes.
+
+        This asynchronous method checks the ability of the ChaskiNode instances
+        to handle UDP requests and provide the correct responses.
+
+        Steps:
+        1. Create 2 nodes.
+        2. Connect Node 1 to Node 0.
+        3. Send a generic UDP request from Node 0 to Node 1.
+        4. Verify the response data matches the sent data.
+        5. Close all nodes.
+
+        Raises
+        ------
+        AssertionError
+            If the response data does not match the sent data.
+        """
+        nodes = await create_nodes(2, self.ip)
+        await nodes[1]._connect_to_peer(nodes[0])
+        await asyncio.sleep(0.5)
+
+        dummy_data = {
+            nodes[0]._gen_id(): nodes[0]._gen_id(),
+            nodes[0]._gen_id(): nodes[0]._gen_id(),
+            nodes[0]._gen_id(): nodes[0]._gen_id(),
+        }
+        response_data = await nodes[0]._test_generic_request_udp(dummy_data)
+        self.assertEqual(
+            dummy_data, response_data, 'Mismatch between sent and received data'
+        )
 
         await self._close_nodes(nodes)
 
@@ -379,6 +435,9 @@ class Test_Connections_for_IPv4(TestConnections, unittest.IsolatedAsyncioTestCas
     async def test_edges_server_orphan(self):
         return await super().test_single_connections()
 
+    async def test_response_udp(self):
+        return await super().test_response_udp()
+
 
 ########################################################################
 class Test_Connections_for_IPv6(unittest.IsolatedAsyncioTestCase, TestConnections):
@@ -450,6 +509,9 @@ class Test_Connections_for_IPv6(unittest.IsolatedAsyncioTestCase, TestConnection
 
     async def test_edges_server_orphan(self):
         return await super().test_single_connections()
+
+    async def test_response_udp(self):
+        return await super().test_response_udp()
 
 
 if __name__ == '__main__':
