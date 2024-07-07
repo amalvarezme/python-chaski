@@ -1,11 +1,11 @@
 Chaski Confluent
 ================
 
-Chaski Confluent is a sophisticated distributed node communication and
-management system that leverages TCP/IP for seamless inter-node
-connections. It enables efficient message handling, serialization,
-discovery, and pairing of nodes based on shared subscriptions, fostering
-dynamic network topologies and robust data exchange capabilities.
+Chaski Confluent is an advanced distributed node communication framework
+that utilizes TCP/IP for inter-node connections, ensuring efficient
+message handling, serialization, discovery, and pairing of nodes based
+on common subscription topics, thus facilitating dynamic and resilient
+data exchange in complex network topologies.
 
 Main Features of Chaski Confluent
 ---------------------------------
@@ -39,6 +39,11 @@ that connections between nodes remain active by implementing keep-alive
 checks. If a connection is lost, the framework handles reconnection
 attempts gracefully to maintain network integrity.
 
+**6. Remote Method Invocation:** The Chaski Remote class enables remote
+method invocation and interaction across distributed nodes. Nodes can
+communicate transparently, invoking methods and accessing attributes on
+remote objects as if they were local.
+
 Chaski Node
 -----------
 
@@ -59,3 +64,14 @@ ChaskiStreamer can enter an asynchronous context, enabling the user to
 stream messages using the ``async with`` statement. This allows for
 handling messages dynamically as they arrive, enhancing the
 responsiveness and flexibility of the system.
+
+Chaski Remote
+-------------
+
+The Chaski Remote class enhances the Chaski Node functionality by
+enabling remote method invocation and interaction across distributed
+nodes. It equips nodes with the ability to communicate transparently,
+invoking methods and accessing attributes on remote objects as if they
+were local. This is achieved by utilizing the Proxy class, which wraps
+around the remote objects and provides a clean interface for method
+calls and attribute access.

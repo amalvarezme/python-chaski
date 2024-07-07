@@ -21,4 +21,5 @@ Submodules
    :maxdepth: 4
 
    chaski.node
+   chaski.remote
    chaski.streamer
