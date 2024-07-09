@@ -24,12 +24,13 @@ sys.path.append('../../..')
 # This class handles various network operations such as initiating connections, handling incoming requests,
 # and orchestrating network-wide actions like discovery and pairing of nodes based on shared subscriptions.
 #
-# **Key Features:**
-#  - **TCP and UDP Communication**: Supports both TCP and UDP protocols for reliable and timely message delivery.
-#  - **Node Discovery and Pairing**: Handles discovery of other nodes and establishes connections based on subscriptions.
-#  - **Ping and Latency Management**: Supports ping operations for measuring latency and maintaining connection health.
-#  - **Subscription Management**: Manages subscribed topics and pairs nodes sharing common interests.
-#  - **Keep-alive and Disconnection Handling**: Maintains active connections and handles disconnections gracefully.
+# **Key Features:**  
+#
+#  - **TCP and UDP Communication**: Supports both TCP and UDP protocols for reliable and timely message delivery.  
+#  - **Node Discovery and Pairing**: Handles discovery of other nodes and establishes connections based on subscriptions.  
+#  - **Ping and Latency Management**: Supports ping operations for measuring latency and maintaining connection health.  
+#  - **Subscription Management**: Manages subscribed topics and pairs nodes sharing common interests.  
+#  - **Keep-alive and Disconnection Handling**: Maintains active connections and handles disconnections gracefully.  
 
 # %% [markdown]
 # ## Create node
@@ -42,17 +43,17 @@ import pickle
 
 # This block initializes a ChaskiNode with specific parameters for network communication and management.
 node = ChaskiNode(
-    ip='127.0.0.1',                         # The IP address for the node to bind to.
-    port=65432,                             # The port number for the node to listen on.
-    serializer=pickle.dumps,                # Function to serialize data before sending.
-    deserializer=pickle.loads,              # Function to deserialize received data.
-    name='Node',                            # The name for the node.
-    subscriptions=['topic1', 'topic2'],     # List of topics the node is interested in.
-    run=True,                               # Flag to start the servers immediately on initialization.
-    ttl=64,                                 # Time-to-live value for discovery messages.
-    root=False,                             # Flag to indicate if the node is a root node.
-    max_connections=5,                      # Maximum number of connections the node can handle.
-    reconnections=32,                       # Number of reconnection attempts if a connection is lost.
+    ip='127.0.0.1',  # The IP address for the node to bind to.
+    port=65432,  # The port number for the node to listen on.
+    serializer=pickle.dumps,  # Function to serialize data before sending.
+    deserializer=pickle.loads,  # Function to deserialize received data.
+    name='Node',  # The name for the node.
+    subscriptions=['topic1', 'topic2'],  # List of topics the node is interested in.
+    run=True,  # Flag to start the servers immediately on initialization.
+    ttl=64,  # Time-to-live value for discovery messages.
+    root=False,  # Flag to indicate if the node is a root node.
+    max_connections=5,  # Maximum number of connections the node can handle.
+    reconnections=32,  # Number of reconnection attempts if a connection is lost.
 )
 
 node
@@ -95,16 +96,17 @@ node3 = ChaskiNode(
 # Specifically, the instances `node1`, `node2`, and `node3` do not utilize the `port`, `serializer`, `deserializer`, `run`, `ttl`, `root`, `max_connections`, and `reconnections` arguments.
 # Here are some reasons why these arguments might not be used in this context:
 #
-#  1. **Port:** If not specified, the nodes may dynamically bind to available ports which are automatically chosen.
-#  2. **Serializer and Deserializer:** If nodes are communicating using default methods, custom serializers and deserializers might not be necessary.
-#  3. **Run:** Assuming the servers should start immediately, so run defaults to True.
-#  4. **TTL:** The default TTL may be sufficient for the scope of communication.
-#  5. **Root:** Nodes in this context might not need to designate a specific root node.
-#  6. **Max Connections:** The default maximum might be sufficient for the network's needs.
-#  7. **Reconnections:** Depending on the stability of connections, reconnections might not be a priority.
+#   - **Port:** If not specified, the nodes may dynamically bind to available ports which are automatically chosen.
+#   - **Serializer and Deserializer:** If nodes are communicating using default methods, custom serializers and deserializers might not be necessary.
+#   - **Run:** Assuming the servers should start immediately, so run defaults to True.
+#   - **TTL:** The default TTL may be sufficient for the scope of communication.
+#   - **Root:** Nodes in this context might not need to designate a specific root node.
+#   - **Max Connections:** The default maximum might be sufficient for the network's needs.
+#   - **Reconnections:** Depending on the stability of connections, reconnections might not be a priority.
 
 # %% nbsphinx="hidden"
 import asyncio
+
 await asyncio.sleep(0.5)
 
 # %% [markdown]
@@ -120,7 +122,7 @@ await asyncio.sleep(0.5)
 # %%
 from chaski.utils.viz import display_graph
 
-#This block visualizes the connections between node1, node2, and node3 using a graph representation.
+# This block visualizes the connections between node1, node2, and node3 using a graph representation.
 display_graph([node1, node2, node3])
 
 # %% [markdown]
@@ -131,6 +133,7 @@ display_graph([node1, node2, node3])
 # This feature ensures that nodes can dynamically join the network, share information, and collaborate without manual configuration.
 #
 # **Key Benefits:**
+#
 #  - **Automatic Network Expansion:** Nodes can find and connect to each other based on shared subscriptions, allowing the network to grow automatically.
 #  - **Dynamic Pairing:** Nodes that share common interests are paired together, facilitating efficient communication and collaboration.
 #  - **Flexible Configuration:** The discovery process can be customized using parameters such as `on_pair` and `timeout` to control the behavior during the discovery phase.
@@ -233,4 +236,3 @@ await asyncio.sleep(0.5)
 
 # %%
 display_graph([node1, node2, node3])
-

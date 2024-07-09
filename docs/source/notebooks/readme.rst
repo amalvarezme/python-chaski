@@ -1,3 +1,15 @@
+   | Developed by `Yeison Nolberto Cardona Álvarez,
+     MSc. <https://github.com/yeisonCardona>`__
+   | `Andrés Marino Álvarez Meza,
+     PhD. <https://github.com/amalvarezme>`__
+   | César Germán Castellanos Dominguez, PhD.
+   | *Digital Signal Processing and Control Group* \| *Grupo de Control
+     y Procesamiento Digital de Señales
+     (*\ `GCPDS <https://github.com/UN-GCPDS/>`__\ *)*
+   | *Universidad Nacional de Colombia sede Manizales*
+
+--------------
+
 Chaski Confluent
 ================
 
@@ -7,6 +19,35 @@ message handling, serialization, discovery, and pairing of nodes based
 on common subscription topics, thus facilitating dynamic and resilient
 data exchange in complex network topologies.
 
+|GitHub top language| |PyPI - License| |PyPI| |PyPI - Status| |PyPI -
+Python Version| |GitHub last commit| |CodeFactor Grade| |Documentation
+Status|
+
+.. |GitHub top language| image:: https://img.shields.io/github/languages/top/dunderlab/python-chaski
+.. |PyPI - License| image:: https://img.shields.io/pypi/l/chaski
+.. |PyPI| image:: https://img.shields.io/pypi/v/chaski
+.. |PyPI - Status| image:: https://img.shields.io/pypi/status/chaski
+.. |PyPI - Python Version| image:: https://img.shields.io/pypi/pyversions/chaski
+.. |GitHub last commit| image:: https://img.shields.io/github/last-commit/dunderlab/python-chaski
+.. |CodeFactor Grade| image:: https://img.shields.io/codefactor/grade/github/dunderlab/python-chaski
+.. |Documentation Status| image:: https://readthedocs.org/projects/chaski-confluent/badge/?version=latest
+   :target: https://chaski-confluent.readthedocs.io/en/latest/?badge=latest
+
+Chaski Confluent is engineered to address the communication challenges
+in distributed systems, offering a robust and efficient framework. It
+leverages the flexibility of TCP/IP protocols to ensure reliable data
+exchange across varied network conditions. By utilizing advanced node
+discovery and pairing mechanisms, Chaski Confluent enables seamless
+integration and collaboration among nodes.
+
+Through features such as ping and latency management, the framework
+keeps communications optimal, which is crucial for maintaining the
+health and performance of the network. Subscription management ensures
+that messages are only sent to relevant nodes, enhancing efficiency and
+reducing unnecessary data transfer. Moreover, Chaski Confluent’s
+resilience through keep-alive checks and graceful reconnections
+guarantees continuous and stable network operations.
+
 Main Features of Chaski Confluent
 ---------------------------------
 
@@ -14,32 +55,32 @@ The Chaski Confluent framework provides various powerful features that
 make it suitable for managing distributed systems. Here are some of the
 key features:
 
-**1. TCP and UDP Communication:** Chaski Confluent supports both TCP and
+**TCP and UDP Communication:** Chaski Confluent supports both TCP and
 UDP protocols, allowing for reliable and timely message delivery between
 nodes. The framework ensures efficient data transfer irrespective of the
 underlying network conditions.
 
-**2. Node Discovery and Pairing:** Automatic discovery of nodes based on
+**Node Discovery and Pairing:** Automatic discovery of nodes based on
 shared subscription topics is a crucial feature. Chaski Confluent
 facilitates the pairing of nodes with common interests, making it easy
 to build dynamic and scalable network topologies.
 
-**3. Ping and Latency Management:** The framework includes built-in
+**Ping and Latency Management:** The framework includes built-in
 mechanisms for measuring latency between nodes through ping operations.
 This helps in maintaining healthy connections and ensures that
 communication within the network is optimal.
 
-**4. Subscription Management:** Nodes can subscribe to specific topics,
-and messages are routed efficiently based on these subscriptions. This
+**Subscription Management:** Nodes can subscribe to specific topics, and
+messages are routed efficiently based on these subscriptions. This
 allows for effective communication and data exchange only with relevant
 nodes.
 
-**5. Keep-alive and Disconnection Handling:** Chaski Confluent ensures
-that connections between nodes remain active by implementing keep-alive
+**Keep-alive and Disconnection Handling:** Chaski Confluent ensures that
+connections between nodes remain active by implementing keep-alive
 checks. If a connection is lost, the framework handles reconnection
 attempts gracefully to maintain network integrity.
 
-**6. Remote Method Invocation:** The Chaski Remote class enables remote
+**Remote Method Invocation:** The Chaski Remote class enables remote
 method invocation and interaction across distributed nodes. Nodes can
 communicate transparently, invoking methods and accessing attributes on
 remote objects as if they were local.

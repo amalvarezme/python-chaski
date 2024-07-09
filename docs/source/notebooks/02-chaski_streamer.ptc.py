@@ -23,12 +23,13 @@ sys.path.append('../../..')
 # The `ChaskiStreamer` class is designed to efficiently stream messages across a distributed network of nodes.
 # It offers scalable solutions for handling large volumes of data and ensures timely delivery across the network.
 #
-# **Key Features:**
-#  - **High Throughput:** Optimized for streaming large volumes of messages.
-#  - **Low Latency:** Ensures minimal delay in message delivery across distributed nodes.
-#  - **Fault Tolerance:** Robust mechanisms to handle node failures and network issues.
-#  - **Dynamic Scaling:** Automatically adjusts to the number of nodes and message load.
-#  - **Subscription-based Streaming:** Allows nodes to subscribe to specific topics of interest.
+# **Key Features:**  
+#
+#  - **High Throughput:** Optimized for streaming large volumes of messages.  
+#  - **Low Latency:** Ensures minimal delay in message delivery across distributed nodes.  
+#  - **Fault Tolerance:** Robust mechanisms to handle node failures and network issues.  
+#  - **Dynamic Scaling:** Automatically adjusts to the number of nodes and message load.  
+#  - **Subscription-based Streaming:** Allows nodes to subscribe to specific topics of interest.  
 #
 # ## Create Streamer
 #
@@ -40,17 +41,17 @@ from chaski.streamer import ChaskiStreamer
 import pickle
 
 streamer = ChaskiStreamer(
-    ip='127.0.0.1',                         # The IP address for the node to bind to.
-    port=65432,                             # The port number for the node to listen on.
-    serializer=pickle.dumps,                # Function to serialize data before sending.
-    deserializer=pickle.loads,              # Function to deserialize received data.
-    name='Node',                            # The name for the node.
-    subscriptions=['topic1', 'topic2'],     # List of topics the node is interested in.
-    run=True,                               # Flag to start the servers immediately on initialization.
-    ttl=64,                                 # Time-to-live value for discovery messages.
-    root=False,                             # Flag to indicate if the node is a root node.
-    max_connections=5,                      # Maximum number of connections the node can handle.
-    reconnections=32,                       # Number of reconnection attempts if a connection is lost.
+    ip='127.0.0.1',  # The IP address for the node to bind to.
+    port=65432,  # The port number for the node to listen on.
+    serializer=pickle.dumps,  # Function to serialize data before sending.
+    deserializer=pickle.loads,  # Function to deserialize received data.
+    name='Node',  # The name for the node.
+    subscriptions=['topic1', 'topic2'],  # List of topics the node is interested in.
+    run=True,  # Flag to start the servers immediately on initialization.
+    ttl=64,  # Time-to-live value for discovery messages.
+    root=False,  # Flag to indicate if the node is a root node.
+    max_connections=5,  # Maximum number of connections the node can handle.
+    reconnections=32,  # Number of reconnection attempts if a connection is lost.
 )
 
 # %% [markdown]
@@ -68,6 +69,7 @@ streamer.address
 
 # %%
 producer = ChaskiStreamer(
+    port=8511,
     name='Producer',
     subscriptions=['topic1'],
 )
@@ -77,8 +79,8 @@ producer
 # The `producer` node is set up to publish messages on `topic1`, while the `consumer` node
 # subscribes to this topic to receive messages.
 #
-# 1. The `producer` connects to the `consumer` using the `connect` method.
-# 2. Messages are then sent using the `push` method on the `producer`.
+#   - The `producer` connects to the `consumer` using the `connect` method.
+#   - Messages are then sent using the `push` method on the `producer`.
 #
 
 # %%
@@ -104,7 +106,7 @@ await streamer.push('topic1', message)
 
 # %%
 consumer = ChaskiStreamer(
-    port=8511,
+    port=8512,
     name='Consumer',
     subscriptions=['topic1'],
     root=True,
@@ -118,8 +120,8 @@ consumer
 # The `ChaskiStreamer` allows for another method to consume messages using asynchronous context managers.
 # With the `async with` statement, you can handle incoming messages in a more streamlined way:
 #
-# 1. Use `async with consumer` to enter the asynchronous context.
-# 2. Iterate over `message_queue` to process each incoming message asynchronously.
+#   - Use `async with consumer` to enter the asynchronous context.
+#   - Iterate over `message_queue` to process each incoming message asynchronously.
 #
 # This ensures all resources are properly managed and released when done, providing cleaner and more efficient code.
 
@@ -138,8 +140,8 @@ async with consumer as message_queue:
 #
 # Here’s how to use it:
 #
-# 1. Iterate over the `message_stream()` to process each incoming message asynchronously.
-# 2. Explicitly call the `stop()` method to close the streamer and release resources.
+#   - Iterate over the `message_stream()` to process each incoming message asynchronously.
+#   - Explicitly call the `stop()` method to close the streamer and release resources.
 #
 
 # %%
