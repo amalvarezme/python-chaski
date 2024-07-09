@@ -92,12 +92,16 @@ autodoc_typehints = 'signature'  # Show typehints in the signature (default)
 # autodoc_typehints = 'both'  # Show typehints in the signature and as content of the function or method
 
 # Uncomment one of the following lines to set the desired behavior for documenting types of undocumented parameters and return values
-autodoc_typehints_description_target = 'all'  # Types are documented for all parameters and return values (default)
+autodoc_typehints_description_target = (
+    'all'  # Types are documented for all parameters and return values (default)
+)
 # autodoc_typehints_description_target = 'documented'  # Types are documented only for parameters or return values that are already documented by the docstring
 # autodoc_typehints_description_target = 'documented_params'  # Parameter types are annotated if documented in the docstring; return type is always annotated (except if None)
 
 # Uncomment one of the following lines to set the desired format for typehints
-autodoc_typehints_format = 'short'  # Suppress the leading module names of the typehints (default)
+autodoc_typehints_format = (
+    'short'  # Suppress the leading module names of the typehints (default)
+)
 # autodoc_typehints_format = 'fully-qualified'  # Show the module name and its name of typehints
 
 
@@ -117,8 +121,3 @@ autodoc_mock_imports = [
 
 def setup(app):
     app.add_css_file('custom_chaski.css')
-
-
-# nbsphinx_custom_formats = {
-    # '.pct.py': ['jupytext.reads', {'fmt': 'py:percent'}],
-# }
