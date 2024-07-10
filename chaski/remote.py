@@ -22,6 +22,7 @@ Classes
 from dataclasses import dataclass
 from typing import Any, Optional
 import asyncio
+import nest_asyncio
 import logging
 import importlib
 from datetime import datetime
@@ -30,6 +31,9 @@ from chaski.node import ChaskiNode
 
 # Initialize logger for ChaskiRemote operations
 logger_remote = logging.getLogger("ChaskiRemote")
+
+# Apply nested asyncio event loop to allow recursive event loop usage
+nest_asyncio.apply()
 
 
 ########################################################################
@@ -57,10 +61,10 @@ class Proxy:
     chaski.remote.ChaskiRemote : Subclass of `ChaskiNode` for remote interaction and proxies.
     """
 
-    name: str
-    obj: Any = None
-    node: 'ChaskiNode' = None
-    edge: 'Edge' = None
+    _name: str
+    _obj: Any = None
+    _node: 'ChaskiNode' = None
+    _edge: 'Edge' = None
 
     # ----------------------------------------------------------------------
     def __repr__(self) -> str:
@@ -76,7 +80,27 @@ class Proxy:
         str
             A string in the format "Proxy(<name>)" where <name> is the name of the proxied object.
         """
-        return f"Proxy({self.name})"
+
+        loop = asyncio.get_event_loop()
+
+        data = {
+            'name': self._name.split('.')[0],
+            'obj': self._name.split('.')[1:],
+            'args': None,
+            'kwargs': None,
+            'timestamp': datetime.now(),
+        }
+
+        # This block synchronously executes an asynchronous request to perform a remote method call on the proxied object.
+        response = loop.run_until_complete(
+            self._node._generic_request_udp(
+                callback='_call_obj_by_proxy',
+                kwargs=data,
+                edge=self._edge,
+            )
+        )
+
+        return response
 
     # ----------------------------------------------------------------------
     def __getattr__(self, attr: str) -> Any:
@@ -98,28 +122,13 @@ class Proxy:
             The attribute value if it is not callable, otherwise a callable class
             wrapping the attribute.
         """
-        obj = getattr(self.obj, attr, None)
-
-        # If the proxied attribute is callable, wrap it in a class that handles the call and provides a representation of the object.
-        if callable(obj):
-            # This wrapper class is created to handle the invocation of callable attributes.
-            # When the attribute is called, it invokes the actual method on the proxied object.
-            # The __repr__ method is overridden to return the string representation of the proxied object.
-            class wrapper:
-                def __call__(cls, *args, **kwargs):
-                    return obj(*args, **kwargs)
-
-                def __repr__(cls):
-                    return str(obj)
-
-            return wrapper()
-
-        else:
-            # Return a new Proxy instance for non-callable attributes, chaining the attribute name for nested object access.
-            return Proxy(f"{self.name}.{attr}", obj=obj, node=self.node, edge=self.edge)
+        obj = getattr(self._obj, attr, None)
+        return Proxy(
+            f"{self._name}.{attr}", _obj=obj, _node=self._node, _edge=self._edge
+        )
 
     # ----------------------------------------------------------------------
-    def _obj(self, obj_chain: list[str]) -> Any:
+    def _object(self, obj_chain: list[str]) -> Any:
         """
         Traverse a chain of object attributes.
 
@@ -138,7 +147,7 @@ class Proxy:
         Any
             The final object obtained by traversing the attribute chain.
         """
-        obj = self.obj
+        obj = self._obj
         # Traverse each attribute in the obj_chain starting from self.obj
         for obj_ in obj_chain:
             obj = getattr(obj, obj_)
@@ -166,18 +175,18 @@ class Proxy:
             The result of the remote method call.
         """
         data = {
-            'name': self.name.split('.')[0],
-            'obj': self.name.split('.')[1:],
+            'name': self._name.split('.')[0],
+            'obj': self._name.split('.')[1:],
             'args': args,
             'kwargs': kwargs,
             'timestamp': datetime.now(),
         }
 
         # Send a request to the remote node using UDP for performing a generic test response.
-        response = await self.node._generic_request_udp(
+        response = await self._node._generic_request_udp(
             callback='_call_obj_by_proxy',
             kwargs=data,
-            edge=self.edge,
+            edge=self._edge,
         )
         return response
 
@@ -269,7 +278,7 @@ class ChaskiRemote(ChaskiNode):
             The service object to register. This object can have methods that will be
             accessible remotely via the proxy.
         """
-        self.proxies[name] = Proxy(name, obj=service, node=self)
+        self.proxies[name] = Proxy(name, _obj=service, _node=self)
 
     # ----------------------------------------------------------------------
     async def proxy(self, module: str) -> Proxy:
@@ -292,7 +301,7 @@ class ChaskiRemote(ChaskiNode):
 
         edge = await self._verify_availability(module=module)
         if edge:
-            return Proxy(module, node=self, edge=edge)
+            return Proxy(module, _node=self, _edge=edge)
         else:
             logger_remote.warning(f"Module {module} not found in the conected edges")
 
@@ -342,8 +351,12 @@ class ChaskiRemote(ChaskiNode):
         )
 
         if name in self.proxies:
-            # Invoke the resolved method on the proxied object with specified arguments and keyword arguments.
-            return self.proxies[name]._obj(obj)(*args, **kwargs_)
+            if args or kwargs_:
+                # Invoke the resolved method on the proxied object with specified arguments and keyword arguments.
+                return self.proxies[name]._object(obj)(*args, **kwargs_)
+            else:
+                # Return the proxied object obtained after traversing the attribute chain.
+                return self.proxies[name]._object(obj)
         else:
             return None
 
