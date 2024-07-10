@@ -19,16 +19,21 @@ Classes
     for remote interaction and method invocation.
 """
 
+from dataclasses import dataclass
+from typing import Any, Optional
 import asyncio
 import logging
-from typing import Any
+import importlib
+from datetime import datetime
 
 from chaski.node import ChaskiNode
 
+# Initialize logger for ChaskiRemote operations
 logger_remote = logging.getLogger("ChaskiRemote")
 
 
 ########################################################################
+@dataclass
 class Proxy:
     """
     Proxy class for remote method invocation.
@@ -52,29 +57,10 @@ class Proxy:
     chaski.remote.ChaskiRemote : Subclass of `ChaskiNode` for remote interaction and proxies.
     """
 
-    # ----------------------------------------------------------------------
-    def __init__(self, name: str, obj: Any = None, node: 'ChaskiNode' = None):
-        """
-        Initialize a Proxy instance.
-
-        This constructor initializes a Proxy object that wraps around another object (`obj`)
-        and provides a way to interact with it via a remote `ChaskiNode`. The Proxy is identified
-        by a unique name.
-
-        Parameters
-        ----------
-        name : str
-            The name of the proxy. This identifier is used to reference the proxied object.
-        obj : Any, optional
-            The object to be proxied. If not provided, the proxy will handle attribute
-            access dynamically.
-        node : ChaskiNode, optional
-            The remote node associated with the proxy. This allows remote method invocation
-            on the proxied object via the node.
-        """
-        self.name = name
-        self.obj = obj
-        self.node = node
+    name: str
+    obj: Any = None
+    node: 'ChaskiNode' = None
+    edge: 'Edge' = None
 
     # ----------------------------------------------------------------------
     def __repr__(self) -> str:
@@ -114,8 +100,11 @@ class Proxy:
         """
         obj = getattr(self.obj, attr, None)
 
+        # If the proxied attribute is callable, wrap it in a class that handles the call and provides a representation of the object.
         if callable(obj):
-
+            # This wrapper class is created to handle the invocation of callable attributes.
+            # When the attribute is called, it invokes the actual method on the proxied object.
+            # The __repr__ method is overridden to return the string representation of the proxied object.
             class wrapper:
                 def __call__(cls, *args, **kwargs):
                     return obj(*args, **kwargs)
@@ -126,7 +115,8 @@ class Proxy:
             return wrapper()
 
         else:
-            return Proxy(f"{self.name}.{attr}", obj=obj, node=self.node)
+            # Return a new Proxy instance for non-callable attributes, chaining the attribute name for nested object access.
+            return Proxy(f"{self.name}.{attr}", obj=obj, node=self.node, edge=self.edge)
 
     # ----------------------------------------------------------------------
     def _obj(self, obj_chain: list[str]) -> Any:
@@ -149,6 +139,7 @@ class Proxy:
             The final object obtained by traversing the attribute chain.
         """
         obj = self.obj
+        # Traverse each attribute in the obj_chain starting from self.obj
         for obj_ in obj_chain:
             obj = getattr(obj, obj_)
         return obj
@@ -179,10 +170,14 @@ class Proxy:
             'obj': self.name.split('.')[1:],
             'args': args,
             'kwargs': kwargs,
+            'timestamp': datetime.now(),
         }
 
+        # Send a request to the remote node using UDP for performing a generic test response.
         response = await self.node._generic_request_udp(
-            '_test_generic_response_udp', data
+            callback='_call_obj_by_proxy',
+            kwargs=data,
+            edge=self.edge,
         )
         return response
 
@@ -198,9 +193,14 @@ class ChaskiRemote(ChaskiNode):
     """
 
     # ----------------------------------------------------------------------
-    def __init__(self, *args: tuple, **kwargs: dict):
+    def __init__(
+        self,
+        available: Optional[str] = None,
+        *args: tuple[Any, ...],
+        **kwargs: dict[str, Any],
+    ):
         """
-        Initialize a ChaskiRemote instance with the provided arguments.
+        Initialize a ChaskiRemote instance.
 
         This constructor initializes a ChaskiRemote node, inheriting from the ChaskiNode
         base class. It also sets up a dictionary to hold proxy objects associated with
@@ -208,13 +208,16 @@ class ChaskiRemote(ChaskiNode):
 
         Parameters
         ----------
-        *args : tuple
+        available : str, optional
+            A string indicating available services for the remote node.
+        *args : tuple of Any
             Positional arguments to be passed to the parent ChaskiNode class.
-        **kwargs : dict
+        **kwargs : dict of {str: Any}
             Keyword arguments to be passed to the parent ChaskiNode class.
         """
         super().__init__(*args, **kwargs)
         self.proxies = {}
+        self.available = available
 
     # ----------------------------------------------------------------------
     def __repr__(self) -> str:
@@ -269,7 +272,7 @@ class ChaskiRemote(ChaskiNode):
         self.proxies[name] = Proxy(name, obj=service, node=self)
 
     # ----------------------------------------------------------------------
-    async def proxy(self, name: str) -> Proxy:
+    async def proxy(self, module: str) -> Proxy:
         """
         Retrieve a proxy object for the specified service name.
 
@@ -278,53 +281,151 @@ class ChaskiRemote(ChaskiNode):
 
         Parameters
         ----------
-        name : str
-            The name of the service to retrieve a proxy for.
+        module : str
+            The name of the service/module to retrieve a proxy for.
 
         Returns
         -------
         Proxy
             The proxy object associated with the specified service name.
         """
-        return Proxy(name, node=self)
+
+        edge = await self._verify_availability(module=module)
+        if edge:
+            return Proxy(module, node=self, edge=edge)
+        else:
+            logger_remote.warning(f"Module {module} not found in the conected edges")
 
     # ----------------------------------------------------------------------
-    async def _test_generic_response_udp(self, **echo_data: dict[str, Any]) -> Any:
+    async def _call_obj_by_proxy(self, **kwargs: dict[str, Any]) -> Any:
         """
-        Test generic response using UDP.
+        Asynchronously call a method on a proxied object with provided arguments.
 
-        This is an asynchronous method used to test generic UDP responses. It processes
-        the incoming `echo_data` and uses this data to simulate a remote procedure call
-        via UDP. The method logs the call details and invokes the corresponding service
-        method on the proxied object.
+        This method performs an asynchronous remote method invocation using the proxy.
+        It logs the call and retrieves the result from the proxied object.
 
         Parameters
         ----------
-        echo_data : dict
+        kwargs : dict
             A dictionary containing the following keys:
-            - 'name': str
-                The name of the proxy service.
-            - 'obj': list
-                A chain of object attributes to traverse for the method call.
-            - 'args': tuple
-                Positional arguments to pass to the method.
-            - 'kwargs': dict
-                Keyword arguments to pass to the method.
+                - 'name': str
+                    The name of the proxy service.
+                - 'obj': list of str
+                    A chain of object attributes to traverse for the method call.
+                - 'args': tuple
+                    Positional arguments to pass to the method.
+                - 'kwargs': dict
+                    Keyword arguments to pass to the method.
+                - 'timestamp': datetime
+                    The timestamp representing when the request was initiated.
 
         Returns
         -------
         Any
             The result of the remote method call based on the proxied service.
+
+        Notes
+        -----
+        This method uses async calls and expects the proxied methods to be asynchronous.
+        The call is logged with the service name, method, and arguments.
         """
         await asyncio.sleep(0)
 
-        name = echo_data['name']
-        obj = echo_data['obj']
-        args = echo_data['args']
-        kwargs = echo_data['kwargs']
+        name = kwargs['name']
+        obj = kwargs['obj']
+        args = kwargs['args']
+        timestamp = kwargs['timestamp']
+        kwargs_ = kwargs['kwargs']
 
-        logger_remote.debug(
-            f"Calling {name}.{'.'.join(obj)} with args:{args} kwargs:{kwargs}"
+        logger_remote.warning(
+            f"{self.name}-{timestamp}: Calling {name}.{'.'.join(obj)} with args:{args} kwargs:{kwargs_}"
         )
 
-        return self.proxies[name]._obj(obj)(*args, **kwargs)
+        if name in self.proxies:
+            # Invoke the resolved method on the proxied object with specified arguments and keyword arguments.
+            return self.proxies[name]._obj(obj)(*args, **kwargs_)
+        else:
+            return None
+
+    # ----------------------------------------------------------------------
+    async def _verify_availability(self, module: str) -> Any:
+        """
+        Verify the availability of a specified module across connected nodes.
+
+        This asynchronous method checks if a specified module is available on any of the
+        connected edges (nodes) in the network. It sends a generic UDP request to each edge
+        to verify if the module is available for remote interaction.
+
+        Parameters
+        ----------
+        module : str
+            The name of the module to check for availability.
+
+        Returns
+        -------
+        Any
+            The edge where the module is available if found, otherwise False.
+
+        Notes
+        -----
+        This method iterates through all connected edges and sends a UDP request to verify
+        the module's availability. It returns the first edge that confirms the module's
+        presence or False if no such edge is found.
+        """
+        data = {
+            'module': module,
+        }
+        # Iterate through each connected edge to check if the specified module is available on any of them.
+        for edge in self.edges:
+            # Sends a request to verify if the specified module is available on the remote node.
+            available = await self._generic_request_udp('_verify_module', data, edge)
+            if available:
+                return edge
+        return False
+
+    # ----------------------------------------------------------------------
+    async def _verify_module(self, **kwargs: dict[str, Any]) -> Any:
+        """
+        Verify the availability of a specified module and register it if available.
+
+        This method checks whether a given module is available for import on the remote node.
+        If the module can be successfully imported, it registers the module as a service with
+        the node. It logs the registration process and returns True if successful, or False
+        otherwise.
+
+        Parameters
+        ----------
+        kwargs : dict
+            A dictionary containing the following key:
+                - 'module': str
+                    The name of the module to verify and potentially register.
+
+        Returns
+        -------
+        bool
+            True if the module is successfully imported and registered, False otherwise.
+
+        Notes
+        -----
+        This method uses the `importlib` to dynamically load modules and `asyncio` to manage
+        asynchronous operations.
+        """
+        await asyncio.sleep(0)
+        module = kwargs['module']
+
+        # Check if the module is listed as available on this node
+        if (self.available) and (not module in self.available):
+            return False
+
+        try:
+            # Dynamically import the specified module
+            imported_module = importlib.import_module(module)
+
+            # Register the dynamically imported module as a service with the node
+            self.register(module, imported_module)
+
+            # Log the registration of the module on the remote node
+            logger_remote.warning(f"{self.name}: Registered {module}")
+            return True
+        except:
+            return False
