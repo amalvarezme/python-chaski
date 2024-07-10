@@ -24,15 +24,15 @@ import logging
 import os
 import pickle
 import random
+import re
 import socket
 import time
-import re
 import traceback
 from dataclasses import dataclass, field
 from datetime import datetime
 from functools import cached_property
 from string import ascii_letters
-from typing import Any, Optional, List, Callable, Awaitable, Tuple, Literal, Union
+from typing import Any, Awaitable, Callable, List, Literal, Optional, Tuple, Union
 
 # Initialize loggers for the main node operations, edge connections, and UDP protocol
 logger_main = logging.getLogger("ChaskiNode")
@@ -555,7 +555,7 @@ class ChaskiNode:
             await self._write(
                 command="report_paired",
                 data=data,
-                writer=writer,
+                edge=edge,
             )
 
         # Log new connection
@@ -686,7 +686,7 @@ class ChaskiNode:
             await self._write(
                 command="discovery",
                 data=data,
-                writer=node.writer,
+                edge=node,
             )
 
             # Start a timer for the discovery process
@@ -1016,7 +1016,7 @@ class ChaskiNode:
         self,
         command: str,
         data: Any,
-        writer: Optional[asyncio.StreamWriter] = None,
+        edge: Optional[Edge] = None,
         topic: str = 'All',
     ) -> None:
         """
@@ -1043,7 +1043,7 @@ class ChaskiNode:
         length_topic = len(topic).to_bytes(4, byteorder="big")
         data = length + length_topic + topic + data
 
-        if writer is None:
+        if edge is None:
             for server_edge in self.edges:
                 # Ensure the server edge is not closing before writing data
                 if not server_edge.writer.is_closing():
@@ -1059,13 +1059,13 @@ class ChaskiNode:
                         # await self.close_connection(server_edge)
         else:
             # Handling write operation with proper error management
-            writer.write(data)
+            edge.writer.write(data)
             try:
                 # Ensure the write buffer is flushed
-                await writer.drain()
+                await edge.writer.drain()
             except ConnectionResetError:
                 logger_main.warning(
-                    f"{self.name}: Connection lost while attempting to write to {writer.get_extra_info('peername')}."
+                    f"{self.name}: Connection lost while attempting to write to {edge.writer.get_extra_info('peername')}."
                 )
                 await self._remove_closing_connection()
 
@@ -1140,7 +1140,7 @@ class ChaskiNode:
                 'dummy_data': os.urandom(size),
                 'size': size,
             },
-            writer=server_edge.writer,
+            edge=server_edge,
         )
 
     # ----------------------------------------------------------------------
@@ -1183,7 +1183,7 @@ class ChaskiNode:
                 latency_update=message.data["latency_update"],
                 size=message.data["size"],
             )
-        await self._write(command="pong", data=data, writer=edge.writer)
+        await self._write(command="pong", data=data, edge=edge)
 
     # ----------------------------------------------------------------------
     async def _process_pong(self, message: Message, edge: Edge) -> None:
@@ -1252,7 +1252,7 @@ class ChaskiNode:
                 "handshake_id": id_,
                 'response': response,
             },
-            writer=server_edge.writer,
+            edge=server_edge,
         )
 
     # ----------------------------------------------------------------------
@@ -1287,7 +1287,7 @@ class ChaskiNode:
             await self._handshake(edge, delay=0.1)
 
         # Respond with handshake acknowledgement
-        await self._write(command="handshake_back", data=data, writer=edge.writer)
+        await self._write(command="handshake_back", data=data, edge=edge)
 
     # ----------------------------------------------------------------------
     async def _process_handshake_back(self, message: Message, edge: Edge) -> None:
@@ -1405,7 +1405,7 @@ class ChaskiNode:
                     await self._write(
                         command="discovery",
                         data=new_data,
-                        writer=server_edge.writer,
+                        edge=server_edge,
                     )
 
     # ----------------------------------------------------------------------
@@ -1830,7 +1830,10 @@ class ChaskiNode:
 
     # ----------------------------------------------------------------------
     async def _generic_request_udp(
-        self, callback: str, kwargs: dict[str, Any] = {}
+        self,
+        callback: str,
+        kwargs: dict[str, Any] = {},
+        edge: Optional['Edge'] = None,
     ) -> Any:
         """
         Make a generic UDP request to a peer node and await the response.
@@ -1874,7 +1877,7 @@ class ChaskiNode:
         self.synchronous_udp_events[id_] = asyncio.Event()
 
         # Send the UDP request and wait for the response event to be set
-        await self._write('request_udp', data_)
+        await self._write('request_udp', data_, edge)
         await self.synchronous_udp_events[id_].wait()
 
         # Retrieve the response data for the given request ID from the synchronous_udp dictionary
