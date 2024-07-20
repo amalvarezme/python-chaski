@@ -1,31 +1,28 @@
 """
-========================================================
-ChaskiRemote: Proxy for Distributed Network Interactions
-========================================================
+=======================================================================
+ChaskiRemote: Transparent Python Framework for Remote Method Invocation
+=======================================================================
 
-This module provides functionality for remote method invocation, enabling
+`ChaskiRemote` is a transparent proxy python objects framework for remote method invocation, enabling
 transparent interaction with objects across distributed network nodes.
-Key classes include Proxy and ChaskiRemote, building upon the foundation
-provided by the ChaskiNode class. These classes facilitate the creation
+Key classes include `Proxy` and `ChaskiRemote`, building upon the foundation
+provided by the `ChaskiNode` class. These classes facilitate the creation
 and management of proxies that allow remote method invocations, making
 distributed computations seamless.
 
 Classes
 =======
-    - *ObjectProxying*: 
-    - *Proxy*: A class that wraps an object and allows remote method invocation
-    and attribute access as if the object were local.
-    - *ChaskiRemote*: An extension of ChaskiNode that enables the creation of proxies
-    for remote interaction and method invocation.
+    - *ObjectProxying*: Provides the ability to create proxy objects for remote method invocation transparently.
+    - *Proxy*: Wraps an object allowing remote method invocation and attribute access as though the object were local.
+    - *ChaskiRemote*: Extends `ChaskiNode` to create and manage proxies, enabling remote interactions and method invocations.
 """
 
-from dataclasses import dataclass
-from typing import Any, Optional
 import asyncio
-import nest_asyncio
 import logging
 import importlib
+import nest_asyncio
 from datetime import datetime
+from typing import Any, Optional
 
 from chaski.node import ChaskiNode
 
@@ -38,8 +35,22 @@ nest_asyncio.apply()
 
 ########################################################################
 class ObjectProxying(object):
+    """
+    This class provides proxying capabilities for enabling remote method invocation
+    transparently. It acts as an intermediary to forward method calls and attribute
+    access to the real object being proxied.
+
+    Notes
+    -----
+    - The `_special_names` list contains names of special methods to be intercepted.
+    - Custom `__getattr__`, `__delattr__`, and `__setattr__` methods ensure delegation
+      of attribute access and modification to the proxied object.
+    """
+
+    # Define slots to restrict attribute creation and save memory, also allow use with weak references
     __slots__ = ["_obj", "__weakref__"]
 
+    # Special method names that will be intercepted by the ObjectProxying class
     _special_names = [
         '__abs__',
         '__add__',
@@ -118,105 +129,213 @@ class ObjectProxying(object):
     ]
 
     # ----------------------------------------------------------------------
-    def __init__(self, obj, instance, parent, name):
-        """"""
+    def __init__(self, obj: Any, instance: Any, parent: Any, name: str):
+        """
+        Initialize an `ObjectProxying` instance.
+
+        This constructor sets up the necessary attributes for the ObjectProxying
+        instance, allowing it to delegate method calls and attribute access to
+        the proxied object.
+
+        Parameters
+        ----------
+        obj : Any
+            The object that is being proxied.
+        instance : Any
+            The instance of the class that contains the Proxy as a descriptor.
+        parent : Any
+            The parent proxy that manages this instance.
+        name : str
+            The name of the proxy.
+
+        Notes
+        -----
+        The attributes are set using `object.__setattr__` to avoid triggering
+        custom `__setattr__` implementations of the proxied object.
+        """
         object.__setattr__(self, "_obj", obj)
         object.__setattr__(self, "_instance", instance)
         object.__setattr__(self, "_parent", parent)
         object.__setattr__(self, "_name", name)
 
     # ----------------------------------------------------------------------
-    def __getattr__(self, attr):
-        """"""
-        return getattr(object.__getattribute__(self, "_instance"), attr)
-
-    # ----------------------------------------------------------------------
-    def __delattr__(self, name):
-        """"""
-        delattr(object.__getattribute__(self, "_obj"), name)
-
-    # ----------------------------------------------------------------------
-    def __setattr__(self, name, value):
-        """"""
-        setattr(object.__getattribute__(self, "_obj"), name, value)
-
-    # ----------------------------------------------------------------------
-    def __nonzero__(self):
-        """"""
-        return bool(object.__getattribute__(self, "_obj"))
-
-    # ----------------------------------------------------------------------
-    def __str__(self):
-        """"""
-        return str(object.__getattribute__(self, "_obj"))
-
-    # ----------------------------------------------------------------------
-    def __repr__(self):
-        """"""
-        return repr(object.__getattribute__(self, "_obj"))
-
-    # ----------------------------------------------------------------------
-    def __hash__(self):
-        """"""
-        return hash(object.__getattribute__(self, "_obj"))
-
-    # ----------------------------------------------------------------------
     @classmethod
-    def _create_class_proxy(cls, theclass):
-        """"""
+    def _create_class_proxy(cls, theclass: type) -> type:
+        """
+        Create a proxy class for the given class type.
+
+        This method generates a proxy class that wraps the methods of the
+        specified class type (`theclass`). This allows for method calls on
+        the class to be intercepted and processed through the proxy mechanism.
+
+        Parameters
+        ----------
+        cls : type
+            The proxy class that is being constructed.
+        theclass : type
+            The original class type for which the proxy is to be created.
+
+        Returns
+        -------
+        type
+            A new proxy class that wraps the specified class type.
+
+        Notes
+        -----
+        This method defines a `make_method` inner function that handles the
+        invocation of methods, ensuring that the chain of proxied method calls
+        is properly managed. If an exception occurs during method invocation,
+        the `processor_method` of the parent proxy is called instead.
+        """
 
         def make_method(name):
             def method(self, *args, **kw):
+                # Set _chain attribute of the _instance to restart the chain from the initial element
                 setattr(
                     object.__getattribute__(self, "_instance"),
                     '_chain',
                     [object.__getattribute__(self, "_instance")._chain[0]],
                 )
+                # Attempt to call the requested method on the proxied object
                 try:
                     return getattr(object.__getattribute__(self, "_obj"), name)(
                         args, kw
                     )
                 except:
+                    # If an exception occurs, use the parent's processor method
                     return getattr(
                         object.__getattribute__(self, "_parent"), 'processor_method'
                     )(args, kw)
 
             return method
 
+        # Populate the namespace with method names that should be proxied.
+        # If theclass contains a method in _special_names, we add it to the namespace
+        # with its corresponding method from make_method.
         namespace = {}
         for name in cls._special_names:
-            # if hasattr(theclass, name) and not hasattr(cls, name):
             if hasattr(theclass, name):
                 namespace[name] = make_method(name)
+
+        # Return a new proxy class that wraps the specified class type, enabling method calls to be intercepted and processed through the proxy mechanism.
         return type(f"{cls.__name__}({theclass.__name__})", (cls,), namespace)
 
     # ----------------------------------------------------------------------
-    def __new__(cls, obj, *args, **kwargs):
-        """"""
+    def __new__(cls, obj: Any, *args: Any, **kwargs: Any) -> Any:
+        """
+        Create a new instance of the class, potentially a class proxy.
+
+        This method attempts to use a class proxy cache to find or create
+        a proxy class for the given object. If a proxy class already exists
+        in the cache for the object's class, it is used; otherwise, a new
+        class proxy is created and cached.
+
+        Parameters
+        ----------
+        cls : type
+            The class being instantiated.
+        obj : Any
+            The object that needs to be proxied.
+        *args : Any
+            Additional positional arguments.
+        **kwargs : Any
+            Additional keyword arguments.
+
+        Returns
+        -------
+        Any
+            A new instance of the class proxy for the given object.
+        """
+        # Attempting to retrieve the existing class proxy cache from the class's dictionary.
         try:
             cache = cls.__dict__["_class_proxy_cache"]
+        # If the cache does not exist, initialize it as an empty dictionary.
         except KeyError:
             cls._class_proxy_cache = cache = {}
 
+        # Attempt to retrieve the proxy class from the cache; if it doesn't exist, create and cache it.
         try:
             theclass = cache[obj.__class__]
         except KeyError:
             cache[obj.__class__] = theclass = cls._create_class_proxy(obj.__class__)
+
+        # Create a new instance of the class proxy for the given object
         return object.__new__(theclass)
+
+    # ----------------------------------------------------------------------
+    # This code block defines custom attribute and method handling for a proxied object.
+    # It overrides attribute access, deletion, assignment, and several special methods
+    # to delegate these operations to the actual proxied object.
+
+    def __getattr__(self, attr):
+        return getattr(object.__getattribute__(self, "_instance"), attr)
+
+    def __delattr__(self, attr):
+        delattr(object.__getattribute__(self, "_obj"), attr)
+
+    def __setattr__(self, attr, value):
+        setattr(object.__getattribute__(self, "_obj"), attr, value)
+
+    def __nonzero__(self):
+        return bool(object.__getattribute__(self, "_obj"))
+
+    def __str__(self):
+        return str(object.__getattribute__(self, "_obj"))
+
+    def __repr__(self):
+        return repr(object.__getattribute__(self, "_obj"))
+
+    def __hash__(self):
+        return hash(object.__getattribute__(self, "_obj"))
 
 
 ########################################################################
 class Proxy:
+    """
+    A class that represents a proxy for remote method invocation.
+
+    The `Proxy` class facilitates interaction with a remote object as if
+    it were local. It supports dynamic attribute access and method
+    invocation, enabling seamless distributed computations.
+    """
 
     # ----------------------------------------------------------------------
-    def __init__(self, name, obj=None, node=None, edge=None, root=False, chain=None):
-        """"""
+    def __init__(
+        self,
+        name: str,
+        obj: Optional[Any] = None,
+        node: Optional[Any] = None,
+        edge: Optional[Any] = None,
+        root: bool = False,
+        chain: Optional[list[str]] = None,
+    ):
+        """
+        Initialize the `Proxy` instance.
+
+        Parameters
+        ----------
+        name : str
+            The name associated with the proxy.
+        obj : Any, optional
+            The object to be proxied, by default None.
+        node : Any, optional
+            The node to which the proxied object belongs, by default None.
+        edge : Any, optional
+            The edge associated with the proxied object, by default None.
+        root : bool, optional
+            Flag indicating whether this is the root proxy, by default False.
+        chain : list of str, optional
+            The chain of attribute names accessed on the proxied object,
+            by default None.
+        """
         self._name = name
         self._obj = obj
         self._node = node
         self._edge = edge
         self._root = root
 
+        # Initialize the attribute chain for the proxied object.
+        # If no chain is provided, use the proxy's name as the initial chain.
         if chain is None:
             self._chain = [name]
         else:
@@ -224,24 +343,86 @@ class Proxy:
 
     # ----------------------------------------------------------------------
     def _object(self, obj_chain: list[str]) -> Any:
-        """"""
+        """
+        Retrieve the object specified by the chain of attribute names.
+
+        This method traverses the chain of attribute names provided as `obj_chain`
+        on the proxied object and returns the final object obtained after the traversal.
+
+        Parameters
+        ----------
+        obj_chain : list of str
+            A list of attribute names to be accessed sequentially on the proxied object.
+
+        Returns
+        -------
+        Any
+            The final object obtained after traversing the attribute chain on
+            the proxied object.
+
+        Notes
+        -----
+        This method is primarily used internally by the proxy mechanism to
+        dynamically access attributes of the proxied object.
+        """
         obj = self._obj
         for obj_ in obj_chain:
             obj = getattr(obj, obj_)
         return obj
 
     # ----------------------------------------------------------------------
-    def __get__(self, instance, owner):
-        """"""
+    def __get__(self, instance: Any, owner: Any) -> ObjectProxying:
+        """
+        Retrieve the proxied attribute for the instance.
+
+        This method is called when an attribute is accessed on an instance
+        of a class that contains a Proxy as a descriptor. It returns an
+        ObjectProxying instance that acts as an intermediary, allowing
+        dynamic retrieval of the proxied object's attribute.
+
+        Parameters
+        ----------
+        instance : Any
+            The instance of the class from which the Proxy is being accessed.
+        owner : Any
+            The owner class of the instance.
+
+        Returns
+        -------
+        ObjectProxying
+            An ObjectProxying instance that will delegate attribute access
+            to the underlying proxied object.
+        """
         return ObjectProxying(self._proxy_get, instance, self, self._name)
 
     # ----------------------------------------------------------------------
-    def __getattr__(self, attr):
-        """"""
+    def __getattr__(self, attr: str) -> Any:
+        """
+        Retrieve the attribute of the proxy object.
+
+        This method appends the requested attribute to the chain of attributes
+        being accessed on the proxied object. If the attribute starts with an
+        underscore, it will be ignored (commonly used for internal variables).
+
+        Parameters
+        ----------
+        attr : str
+            The name of the attribute to retrieve.
+
+        Returns
+        -------
+        Any
+            The proxy object itself, allowing for chained attribute access.
+        """
         if attr.startswith('_'):
             return
 
+        # Append the requested attribute to the chain for dynamic attribute access.
         self._chain.append(attr)
+
+        # Dynamically adds attributes to the Proxy class.
+        # When an attribute is accessed, it creates a new Proxy instance for that attribute,
+        # setting the appropriate object, node, edge, and chain.
         setattr(
             self.__class__,
             attr,
@@ -253,17 +434,65 @@ class Proxy:
                 chain=self._chain,
             ),
         )
+
+        # If the requested attribute starts with an underscore, returning None.
+        # Otherwise, returning the Proxy itself, facilitating chained attribute access.
         return getattr(self, attr)
 
     # ----------------------------------------------------------------------
     @property
-    def _proxy_get(self):
-        """"""
+    def _proxy_get(self) -> Any:
+        """
+        Retrieve the result of the proxied method call.
+
+        This property method processes the proxied method call using the
+        `processor_method` and returns the resulting value.
+
+        Returns
+        -------
+        Any
+            The result of the method invocation on the proxied object.
+            The type of the return value depends on the proxied method.
+        """
         return self.processor_method()
 
     # ----------------------------------------------------------------------
-    def processor_method(self, args=None, kwargs=None):
-        """"""
+    def processor_method(
+        self, args: Optional[tuple] = None, kwargs: Optional[dict] = None
+    ) -> Any:
+        """
+        Process the method invocation on the proxied object.
+
+        This method constructs a data dictionary containing details of the method
+        invocation, such as the name of the proxy service, the chain of object attributes,
+        the positional and keyword arguments, and the timestamp of the request. It then
+        performs the asynchronous request to invoke the method on the remote object.
+
+        Parameters
+        ----------
+        args : tuple, optional
+            Positional arguments to be passed to the remote method. Default is None.
+        kwargs : dict, optional
+            Keyword arguments to be passed to the remote method. Default is None.
+
+        Returns
+        -------
+        Any
+            The result of the method invocation on the remote object. The return value will
+            be deserialized from the response obtained from the remote call.
+
+        Raises
+        ------
+        Exception
+            If an exception is encountered during the execution of the remote method, it
+            will be raised.
+
+        Notes
+        -----
+        This method uses asyncio's event loop to synchronously wait for the completion
+        of the asynchronous remote request. The execution is blocked until the remote
+        method call completes and the result is returned or an exception is raised.
+        """
         data = {
             'name': self._chain[0],
             'obj': self._chain[1:],
@@ -286,6 +515,8 @@ class Proxy:
                 return self._node.deserializer(response)
             case 'exception':
                 raise response
+            case 'repr':
+                return response
 
 
 ########################################################################
@@ -465,7 +696,7 @@ class ChaskiRemote(ChaskiNode):
                     return 'exception', e
 
             if callable(attr):
-                return 'serialized', self.serializer('callable')
+                return 'repr', repr(attr)
             else:
                 return 'serialized', self.serializer(attr)
         else:
