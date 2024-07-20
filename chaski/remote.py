@@ -12,7 +12,7 @@ distributed computations seamless.
 
 Classes
 =======
-
+    - *ObjectProxying*: 
     - *Proxy*: A class that wraps an object and allows remote method invocation
     and attribute access as if the object were local.
     - *ChaskiRemote*: An extension of ChaskiNode that enables the creation of proxies
@@ -37,62 +37,243 @@ nest_asyncio.apply()
 
 
 ########################################################################
-@dataclass
-class Proxy:
-    """
-    Proxy class for remote method invocation.
+class ObjectProxying(object):
+    __slots__ = ["_obj", "__weakref__"]
 
-    The `Proxy` class provides a transparent way of interacting with objects
-    across remote nodes. This class wraps an object and allows remote method
-    invocation and attribute access as if the object were local. It is primarily
-    used within the `ChaskiRemote` framework.
-
-    Notes
-    -----
-    The `Proxy` class uses dynamic attribute access and method invocation to interact
-    with the proxied object. If the attribute accessed is callable, it wraps the attribute
-    in a callable class to allow method invocation. Otherwise, it creates a new `Proxy` instance
-    for attribute access. The `Proxy` instance itself can be called asynchronously to perform
-    remote method invocation.
-
-    See Also
-    --------
-    chaski.node.ChaskiNode : Main class representing a node in the network.
-    chaski.remote.ChaskiRemote : Subclass of `ChaskiNode` for remote interaction and proxies.
-    """
-
-    _name: str
-    _obj: Any = None
-    _node: 'ChaskiNode' = None
-    _edge: 'Edge' = None
+    _special_names = [
+        '__abs__',
+        '__add__',
+        '__and__',
+        '__call__',
+        '__cmp__',
+        '__coerce__',
+        '__contains__',
+        '__delitem__',
+        '__delslice__',
+        '__div__',
+        '__divmod__',
+        '__eq__',
+        '__float__',
+        '__floordiv__',
+        '__ge__',
+        '__getitem__',
+        '__getslice__',
+        '__gt__',
+        '__hex__',
+        '__iadd__',
+        '__iand__',  #'__hash__',
+        '__idiv__',
+        '__idivmod__',
+        '__ifloordiv__',
+        '__ilshift__',
+        '__imod__',
+        '__imul__',
+        '__int__',
+        '__invert__',
+        '__ior__',
+        '__ipow__',
+        '__irshift__',
+        '__isub__',
+        '__iter__',
+        '__itruediv__',
+        '__ixor__',
+        '__le__',
+        '__len__',
+        '__long__',
+        '__lshift__',
+        '__lt__',
+        '__mod__',
+        '__mul__',
+        '__ne__',
+        '__neg__',
+        '__oct__',
+        '__or__',
+        '__pos__',
+        '__pow__',
+        '__radd__',
+        '__rand__',
+        '__rdiv__',
+        '__rdivmod__',
+        '__reduce__',
+        '__reduce_ex__',
+        '__repr__',
+        '__reversed__',
+        '__rfloorfiv__',
+        '__rlshift__',
+        '__rmod__',
+        '__rmul__',
+        '__ror__',
+        '__rpow__',
+        '__rrshift__',
+        '__rshift__',
+        '__rsub__',
+        '__rtruediv__',
+        '__rxor__',
+        '__setitem__',
+        '__setslice__',
+        '__sub__',
+        '__truediv__',
+        '__xor__',
+        'next',
+    ]
 
     # ----------------------------------------------------------------------
-    def __repr__(self) -> str:
-        """
-        Provide a string representation of the Proxy object.
+    def __init__(self, obj, instance, parent, name):
+        """"""
+        object.__setattr__(self, "_obj", obj)
+        object.__setattr__(self, "_instance", instance)
+        object.__setattr__(self, "_parent", parent)
+        object.__setattr__(self, "_name", name)
 
-        This method returns a string representation of the Proxy instance, which
-        includes the name of the proxied object. This can be useful for debugging
-        and logging purposes to identify the proxied object easily.
+    # ----------------------------------------------------------------------
+    def __getattr__(self, attr):
+        """"""
+        return getattr(object.__getattribute__(self, "_instance"), attr)
 
-        Returns
-        -------
-        str
-            A string in the format "Proxy(<name>)" where <name> is the name of the proxied object.
-        """
+    # ----------------------------------------------------------------------
+    def __delattr__(self, name):
+        """"""
+        delattr(object.__getattribute__(self, "_obj"), name)
 
-        loop = asyncio.get_event_loop()
+    # ----------------------------------------------------------------------
+    def __setattr__(self, name, value):
+        """"""
+        setattr(object.__getattribute__(self, "_obj"), name, value)
 
+    # ----------------------------------------------------------------------
+    def __nonzero__(self):
+        """"""
+        return bool(object.__getattribute__(self, "_obj"))
+
+    # ----------------------------------------------------------------------
+    def __str__(self):
+        """"""
+        return str(object.__getattribute__(self, "_obj"))
+
+    # ----------------------------------------------------------------------
+    def __repr__(self):
+        """"""
+        return repr(object.__getattribute__(self, "_obj"))
+
+    # ----------------------------------------------------------------------
+    def __hash__(self):
+        """"""
+        return hash(object.__getattribute__(self, "_obj"))
+
+    # ----------------------------------------------------------------------
+    @classmethod
+    def _create_class_proxy(cls, theclass):
+        """"""
+
+        def make_method(name):
+            def method(self, *args, **kw):
+                setattr(
+                    object.__getattribute__(self, "_instance"),
+                    '_chain',
+                    [object.__getattribute__(self, "_instance")._chain[0]],
+                )
+                try:
+                    return getattr(object.__getattribute__(self, "_obj"), name)(
+                        args, kw
+                    )
+                except:
+                    return getattr(
+                        object.__getattribute__(self, "_parent"), 'processor_method'
+                    )(args, kw)
+
+            return method
+
+        namespace = {}
+        for name in cls._special_names:
+            # if hasattr(theclass, name) and not hasattr(cls, name):
+            if hasattr(theclass, name):
+                namespace[name] = make_method(name)
+        return type(f"{cls.__name__}({theclass.__name__})", (cls,), namespace)
+
+    # ----------------------------------------------------------------------
+    def __new__(cls, obj, *args, **kwargs):
+        """"""
+        try:
+            cache = cls.__dict__["_class_proxy_cache"]
+        except KeyError:
+            cls._class_proxy_cache = cache = {}
+
+        try:
+            theclass = cache[obj.__class__]
+        except KeyError:
+            cache[obj.__class__] = theclass = cls._create_class_proxy(obj.__class__)
+        return object.__new__(theclass)
+
+
+########################################################################
+class Proxy:
+
+    # ----------------------------------------------------------------------
+    def __init__(self, name, obj=None, node=None, edge=None, root=False, chain=None):
+        """"""
+        self._name = name
+        self._obj = obj
+        self._node = node
+        self._edge = edge
+        self._root = root
+
+        if chain is None:
+            self._chain = [name]
+        else:
+            self._chain = chain
+
+    # ----------------------------------------------------------------------
+    def _object(self, obj_chain: list[str]) -> Any:
+        """"""
+        obj = self._obj
+        for obj_ in obj_chain:
+            obj = getattr(obj, obj_)
+        return obj
+
+    # ----------------------------------------------------------------------
+    def __get__(self, instance, owner):
+        """"""
+        return ObjectProxying(self._proxy_get, instance, self, self._name)
+
+    # ----------------------------------------------------------------------
+    def __getattr__(self, attr):
+        """"""
+        if attr.startswith('_'):
+            return
+
+        self._chain.append(attr)
+        setattr(
+            self.__class__,
+            attr,
+            Proxy(
+                attr,
+                obj=self._obj,
+                node=self._node,
+                edge=self._edge,
+                chain=self._chain,
+            ),
+        )
+        return getattr(self, attr)
+
+    # ----------------------------------------------------------------------
+    @property
+    def _proxy_get(self):
+        """"""
+        return self.processor_method()
+
+    # ----------------------------------------------------------------------
+    def processor_method(self, args=None, kwargs=None):
+        """"""
         data = {
-            'name': self._name.split('.')[0],
-            'obj': self._name.split('.')[1:],
-            'args': None,
-            'kwargs': None,
+            'name': self._chain[0],
+            'obj': self._chain[1:],
+            'args': args,
+            'kwargs': kwargs,
             'timestamp': datetime.now(),
         }
 
         # This block synchronously executes an asynchronous request to perform a remote method call on the proxied object.
-        response = loop.run_until_complete(
+        status, response = asyncio.get_event_loop().run_until_complete(
             self._node._generic_request_udp(
                 callback='_call_obj_by_proxy',
                 kwargs=data,
@@ -100,95 +281,11 @@ class Proxy:
             )
         )
 
-        return response
-
-    # ----------------------------------------------------------------------
-    def __getattr__(self, attr: str) -> Any:
-        """
-        Automatically retrieve or wrap the attribute from the proxied object.
-
-        This method intercepts access to attributes of the `Proxy` instance.
-        If the attribute is callable, it wraps the attribute in a callable class
-        wrapper. Otherwise, it creates a new `Proxy` instance for the attribute.
-
-        Parameters
-        ----------
-        attr : str
-            The name of the attribute to retrieve from the proxied object.
-
-        Returns
-        -------
-        Any
-            The attribute value if it is not callable, otherwise a callable class
-            wrapping the attribute.
-        """
-        obj = getattr(self._obj, attr, None)
-        return Proxy(
-            f"{self._name}.{attr}", _obj=obj, _node=self._node, _edge=self._edge
-        )
-
-    # ----------------------------------------------------------------------
-    def _object(self, obj_chain: list[str]) -> Any:
-        """
-        Traverse a chain of object attributes.
-
-        This method navigates through a chain of attributes starting from the
-        initial object (`self.obj`) and follows each attribute in the provided
-        `obj_chain`. It returns the final object obtained by this traversal.
-
-        Parameters
-        ----------
-        obj_chain : list of str
-            A list of attribute names to traverse. Each string in the list
-            represents an attribute name to follow in sequence.
-
-        Returns
-        -------
-        Any
-            The final object obtained by traversing the attribute chain.
-        """
-        obj = self._obj
-        # Traverse each attribute in the obj_chain starting from self.obj
-        for obj_ in obj_chain:
-            obj = getattr(obj, obj_)
-        return obj
-
-    # ----------------------------------------------------------------------
-    async def __call__(self, *args: Any, **kwargs: dict[str, Any]) -> Any:
-        """
-        Perform an asynchronous remote method invocation.
-
-        This special method allows the Proxy instance to be callable.
-        When called, it sends a request to the associated remote service
-        to invoke a method with the provided arguments and keyword arguments.
-
-        Parameters
-        ----------
-        *args : Any
-            Positional arguments to pass to the remote method.
-        **kwargs : dict of {str: Any}
-            Keyword arguments to pass to the remote method.
-
-        Returns
-        -------
-        Any
-            The result of the remote method call.
-        """
-        data = {
-            'name': self._name.split('.')[0],
-            'obj': self._name.split('.')[1:],
-            'args': args,
-            'kwargs': kwargs,
-            'timestamp': datetime.now(),
-        }
-
-        # Send a request to the remote node using UDP for performing a generic test response.
-        response = await self._node._generic_request_udp(
-            callback='_call_obj_by_proxy',
-            kwargs=data,
-            edge=self._edge,
-        )
-        return response
+        match status:
+            case 'serialized':
+                return self._node.deserializer(response)
+            case 'exception':
+                raise response
 
 
 ########################################################################
@@ -278,10 +375,10 @@ class ChaskiRemote(ChaskiNode):
             The service object to register. This object can have methods that will be
             accessible remotely via the proxy.
         """
-        self.proxies[name] = Proxy(name, _obj=service, _node=self)
+        self.proxies[name] = Proxy(name, obj=service, node=self)
 
     # ----------------------------------------------------------------------
-    async def proxy(self, module: str) -> Proxy:
+    def proxy(self, module: str) -> Proxy:
         """
         Retrieve a proxy object for the specified service name.
 
@@ -298,10 +395,12 @@ class ChaskiRemote(ChaskiNode):
         Proxy
             The proxy object associated with the specified service name.
         """
+        edge = asyncio.get_event_loop().run_until_complete(
+            self._verify_availability(module=module)
+        )
 
-        edge = await self._verify_availability(module=module)
         if edge:
-            return Proxy(module, _node=self, _edge=edge)
+            return Proxy(module, node=self, edge=edge, root=True)
         else:
             logger_remote.warning(f"Module {module} not found in the conected edges")
 
@@ -353,12 +452,24 @@ class ChaskiRemote(ChaskiNode):
         if name in self.proxies:
             if args or kwargs_:
                 # Invoke the resolved method on the proxied object with specified arguments and keyword arguments.
-                return self.proxies[name]._object(obj)(*args, **kwargs_)
+                try:
+                    attr = self.proxies[name]._object(obj)(*args, **kwargs_)
+                except Exception as e:
+                    return 'exception', e
+
             else:
                 # Return the proxied object obtained after traversing the attribute chain.
-                return self.proxies[name]._object(obj)
+                try:
+                    attr = self.proxies[name]._object(obj)
+                except Exception as e:
+                    return 'exception', e
+
+            if callable(attr):
+                return 'serialized', self.serializer('callable')
+            else:
+                return 'serialized', self.serializer(attr)
         else:
-            return None
+            return 'exception', 'No proxy available for the requested service'
 
     # ----------------------------------------------------------------------
     async def _verify_availability(self, module: str) -> Any:
@@ -440,5 +551,6 @@ class ChaskiRemote(ChaskiNode):
             # Log the registration of the module on the remote node
             logger_remote.warning(f"{self.name}: Registered {module}")
             return True
-        except:
+        except Exception as e:
+            print(e)
             return False
