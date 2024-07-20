@@ -5,15 +5,15 @@ ChaskiRemote: Transparent Python Framework for Remote Method Invocation
 
 `ChaskiRemote` is a transparent proxy python objects framework for remote method invocation, enabling
 transparent interaction with objects across distributed network nodes.
-Key classes include `Proxy` and `ChaskiRemote`, building upon the foundation
+Key classes include `ChaskitProxy` and `ChaskiRemote`, building upon the foundation
 provided by the `ChaskiNode` class. These classes facilitate the creation
 and management of proxies that allow remote method invocations, making
 distributed computations seamless.
 
 Classes
 =======
-    - *ObjectProxying*: Provides the ability to create proxy objects for remote method invocation transparently.
-    - *Proxy*: Wraps an object allowing remote method invocation and attribute access as though the object were local.
+    - *ChaskiObjectProxying*: Provides the ability to create proxy objects for remote method invocation transparently.
+    - *ChaskitProxy*: Wraps an object allowing remote method invocation and attribute access as though the object were local.
     - *ChaskiRemote*: Extends `ChaskiNode` to create and manage proxies, enabling remote interactions and method invocations.
 """
 
@@ -34,7 +34,7 @@ nest_asyncio.apply()
 
 
 ########################################################################
-class ObjectProxying(object):
+class ChaskiObjectProxying(object):
     """
     This class provides proxying capabilities for enabling remote method invocation
     transparently. It acts as an intermediary to forward method calls and attribute
@@ -50,7 +50,7 @@ class ObjectProxying(object):
     # Define slots to restrict attribute creation and save memory, also allow use with weak references
     __slots__ = ["_obj", "__weakref__"]
 
-    # Special method names that will be intercepted by the ObjectProxying class
+    # Special method names that will be intercepted by the ChaskiObjectProxying class
     _special_names = [
         '__abs__',
         '__add__',
@@ -72,7 +72,8 @@ class ObjectProxying(object):
         '__gt__',
         '__hex__',
         '__iadd__',
-        '__iand__',  #'__hash__',
+        '__iand__',
+        #'__hash__',
         '__idiv__',
         '__idivmod__',
         '__ifloordiv__',
@@ -107,7 +108,7 @@ class ObjectProxying(object):
         '__rdivmod__',
         '__reduce__',
         '__reduce_ex__',
-        '__repr__',
+        # '__repr__',
         '__reversed__',
         '__rfloorfiv__',
         '__rlshift__',
@@ -131,9 +132,9 @@ class ObjectProxying(object):
     # ----------------------------------------------------------------------
     def __init__(self, obj: Any, instance: Any, parent: Any, name: str):
         """
-        Initialize an `ObjectProxying` instance.
+        Initialize an `ChaskiObjectProxying` instance.
 
-        This constructor sets up the necessary attributes for the ObjectProxying
+        This constructor sets up the necessary attributes for the ChaskiObjectProxying
         instance, allowing it to delegate method calls and attribute access to
         the proxied object.
 
@@ -142,7 +143,7 @@ class ObjectProxying(object):
         obj : Any
             The object that is being proxied.
         instance : Any
-            The instance of the class that contains the Proxy as a descriptor.
+            The instance of the class that contains the ChaskitProxy as a descriptor.
         parent : Any
             The parent proxy that manages this instance.
         name : str
@@ -217,7 +218,8 @@ class ObjectProxying(object):
             if hasattr(theclass, name):
                 namespace[name] = make_method(name)
 
-        # Return a new proxy class that wraps the specified class type, enabling method calls to be intercepted and processed through the proxy mechanism.
+        # Return a new proxy class that wraps the specified class type, enabling method
+        # calls to be intercepted and processed through the proxy mechanism.
         return type(f"{cls.__name__}({theclass.__name__})", (cls,), namespace)
 
     # ----------------------------------------------------------------------
@@ -257,6 +259,8 @@ class ObjectProxying(object):
         try:
             theclass = cache[obj.__class__]
         except KeyError:
+            # Check if the proxy class for the object's class type exists in the cache;
+            # if not, create the proxy class and cache it for future use.
             cache[obj.__class__] = theclass = cls._create_class_proxy(obj.__class__)
 
         # Create a new instance of the class proxy for the given object
@@ -288,13 +292,57 @@ class ObjectProxying(object):
     def __hash__(self):
         return hash(object.__getattribute__(self, "_obj"))
 
+    # ----------------------------------------------------------------------
+    @property
+    def _(self) -> Any:
+        """
+        Retrieve the type of the proxied object instance.
+
+        This property method returns the type of the actual proxied object,
+        wrapped in a new instance of the same type. It effectively provides
+        access to a new instance of the type of the proxied object.
+
+        Returns
+        -------
+        Any
+            A new instance of the type of the proxied object.
+        """
+        return type(object.__getattribute__(self, "_obj"))(
+            object.__getattribute__(self, "_obj")
+        )
+
+    # ----------------------------------------------------------------------
+    def __enter__(self) -> Any:
+        """
+        Enter the context manager.
+
+        This method is called when entering a context managed by `ChaskiObjectProxying`.
+        It returns the proxied object, allowing it to be used within the context.
+
+        Returns
+        -------
+        Any
+            The proxied object instance.
+        """
+        return self._
+
+    # ----------------------------------------------------------------------
+    def __exit__(self, *args: Any, **kwargs: Any) -> None:
+        """
+        Exit the context manager.
+
+        This method is called when exiting a context managed by `ChaskiObjectProxying`.
+        It performs any necessary cleanup, but in this implementation, it does nothing.
+        """
+        pass
+
 
 ########################################################################
-class Proxy:
+class ChaskiProxy:
     """
     A class that represents a proxy for remote method invocation.
 
-    The `Proxy` class facilitates interaction with a remote object as if
+    The `ChaskitProxy` class facilitates interaction with a remote object as if
     it were local. It supports dynamic attribute access and method
     invocation, enabling seamless distributed computations.
     """
@@ -310,7 +358,7 @@ class Proxy:
         chain: Optional[list[str]] = None,
     ):
         """
-        Initialize the `Proxy` instance.
+        Initialize the `ChaskitProxy` instance.
 
         Parameters
         ----------
@@ -342,6 +390,11 @@ class Proxy:
             self._chain = chain
 
     # ----------------------------------------------------------------------
+    def __repr__(self):
+        """"""
+        return f"ChaskiProxy({self._name}, {self._node.address})"
+
+    # ----------------------------------------------------------------------
     def _object(self, obj_chain: list[str]) -> Any:
         """
         Retrieve the object specified by the chain of attribute names.
@@ -371,29 +424,29 @@ class Proxy:
         return obj
 
     # ----------------------------------------------------------------------
-    def __get__(self, instance: Any, owner: Any) -> ObjectProxying:
+    def __get__(self, instance: Any, owner: Any) -> ChaskiObjectProxying:
         """
         Retrieve the proxied attribute for the instance.
 
         This method is called when an attribute is accessed on an instance
-        of a class that contains a Proxy as a descriptor. It returns an
-        ObjectProxying instance that acts as an intermediary, allowing
+        of a class that contains a ChaskitProxy as a descriptor. It returns an
+        ChaskiObjectProxying instance that acts as an intermediary, allowing
         dynamic retrieval of the proxied object's attribute.
 
         Parameters
         ----------
         instance : Any
-            The instance of the class from which the Proxy is being accessed.
+            The instance of the class from which the ChaskitProxy is being accessed.
         owner : Any
             The owner class of the instance.
 
         Returns
         -------
-        ObjectProxying
-            An ObjectProxying instance that will delegate attribute access
+        ChaskiObjectProxying
+            An ChaskiObjectProxying instance that will delegate attribute access
             to the underlying proxied object.
         """
-        return ObjectProxying(self._proxy_get, instance, self, self._name)
+        return ChaskiObjectProxying(self._proxy_get, instance, self, self._name)
 
     # ----------------------------------------------------------------------
     def __getattr__(self, attr: str) -> Any:
@@ -420,13 +473,13 @@ class Proxy:
         # Append the requested attribute to the chain for dynamic attribute access.
         self._chain.append(attr)
 
-        # Dynamically adds attributes to the Proxy class.
-        # When an attribute is accessed, it creates a new Proxy instance for that attribute,
+        # Dynamically adds attributes to the ChaskitProxy class.
+        # When an attribute is accessed, it creates a new ChaskitProxy instance for that attribute,
         # setting the appropriate object, node, edge, and chain.
         setattr(
             self.__class__,
             attr,
-            Proxy(
+            ChaskiProxy(
                 attr,
                 obj=self._obj,
                 node=self._node,
@@ -436,7 +489,7 @@ class Proxy:
         )
 
         # If the requested attribute starts with an underscore, returning None.
-        # Otherwise, returning the Proxy itself, facilitating chained attribute access.
+        # Otherwise, returning the ChaskitProxy itself, facilitating chained attribute access.
         return getattr(self, attr)
 
     # ----------------------------------------------------------------------
@@ -606,10 +659,10 @@ class ChaskiRemote(ChaskiNode):
             The service object to register. This object can have methods that will be
             accessible remotely via the proxy.
         """
-        self.proxies[name] = Proxy(name, obj=service, node=self)
+        self.proxies[name] = ChaskiProxy(name, obj=service, node=self)
 
     # ----------------------------------------------------------------------
-    def proxy(self, module: str) -> Proxy:
+    def proxy(self, module: str) -> ChaskiProxy:
         """
         Retrieve a proxy object for the specified service name.
 
@@ -623,7 +676,7 @@ class ChaskiRemote(ChaskiNode):
 
         Returns
         -------
-        Proxy
+        ChaskitProxy
             The proxy object associated with the specified service name.
         """
         edge = asyncio.get_event_loop().run_until_complete(
@@ -631,7 +684,7 @@ class ChaskiRemote(ChaskiNode):
         )
 
         if edge:
-            return Proxy(module, node=self, edge=edge, root=True)
+            return ChaskiProxy(module, node=self, edge=edge, root=True)
         else:
             logger_remote.warning(f"Module {module} not found in the conected edges")
 
