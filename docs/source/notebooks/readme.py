@@ -13,10 +13,10 @@
 #     name: python3
 # ---
 
-# > Developed by [Yeison Nolberto Cardona Álvarez, MSc.](https://github.com/yeisonCardona)
-# [Andrés Marino Álvarez Meza, PhD.](https://github.com/amalvarezme)
-# César Germán Castellanos Dominguez, PhD.
-# > _Digital Signal Processing and Control Group_  | _Grupo de Control y Procesamiento Digital de Señales ([GCPDS](https://github.com/UN-GCPDS/))_
+# > Developed by [Yeison Nolberto Cardona Álvarez, MSc.](https://github.com/yeisonCardona)  
+# [Andrés Marino Álvarez Meza, PhD.](https://github.com/amalvarezme)  
+# César Germán Castellanos Dominguez, PhD.  
+# > _Digital Signal Processing and Control Group_  | _Grupo de Control y Procesamiento Digital de Señales ([GCPDS](https://github.com/UN-GCPDS/))_  
 # > _Universidad Nacional de Colombia sede Manizales_
 #
 # ----
@@ -27,7 +27,7 @@
 
 # # Chaski Confluent
 #
-# Chaski Confluent is an advanced distributed node communication framework that utilizes TCP/IP
+# [Chaski Confluent](https://github.com/dunderlab/python-chaski) is an advanced distributed node communication framework that utilizes TCP/IP
 # for inter-node connections, ensuring efficient message handling, serialization, discovery, and
 # pairing of nodes based on common subscription topics, thus facilitating dynamic and resilient
 # data exchange in complex network topologies.

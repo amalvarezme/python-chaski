@@ -1,10 +1,12 @@
-   Developed by `Yeison Nolberto Cardona Álvarez,
-   MSc. <https://github.com/yeisonCardona>`__ `Andrés Marino Álvarez
-   Meza, PhD. <https://github.com/amalvarezme>`__ César Germán
-   Castellanos Dominguez, PhD. *Digital Signal Processing and Control
-   Group* \| *Grupo de Control y Procesamiento Digital de Señales
-   (*\ `GCPDS <https://github.com/UN-GCPDS/>`__\ *)* *Universidad
-   Nacional de Colombia sede Manizales*
+   | Developed by `Yeison Nolberto Cardona Álvarez,
+     MSc. <https://github.com/yeisonCardona>`__
+   | `Andrés Marino Álvarez Meza,
+     PhD. <https://github.com/amalvarezme>`__
+   | César Germán Castellanos Dominguez, PhD.
+   | *Digital Signal Processing and Control Group* \| *Grupo de Control
+     y Procesamiento Digital de Señales
+     (*\ `GCPDS <https://github.com/UN-GCPDS/>`__\ *)*
+   | *Universidad Nacional de Colombia sede Manizales*
 
 --------------
 
@@ -16,11 +18,12 @@
 Chaski Confluent
 ================
 
-Chaski Confluent is an advanced distributed node communication framework
-that utilizes TCP/IP for inter-node connections, ensuring efficient
-message handling, serialization, discovery, and pairing of nodes based
-on common subscription topics, thus facilitating dynamic and resilient
-data exchange in complex network topologies.
+`Chaski Confluent <https://github.com/dunderlab/python-chaski>`__ is an
+advanced distributed node communication framework that utilizes TCP/IP
+for inter-node connections, ensuring efficient message handling,
+serialization, discovery, and pairing of nodes based on common
+subscription topics, thus facilitating dynamic and resilient data
+exchange in complex network topologies.
 
 |GitHub top language| |PyPI - License| |PyPI| |PyPI - Status| |PyPI -
 Python Version| |GitHub last commit| |CodeFactor Grade| |Documentation
