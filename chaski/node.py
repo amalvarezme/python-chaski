@@ -381,8 +381,8 @@ class ChaskiNode:
         # Initialize node parameters
         self.ip = ip
         self.port = int(port)
-        self.serializer = serializer
-        self.deserializer = deserializer
+        self.serializer_ = serializer
+        self.deserializer_ = deserializer
         self.server = None
         self.ttl = ttl
         self.max_connections = max_connections
@@ -447,6 +447,22 @@ class ChaskiNode:
         """
         h = '*' if self.paired else ''
         return f"{h}ChaskiNode@{self.ip}:{self.port}"
+
+    # ----------------------------------------------------------------------
+    def serializer(self, obj):
+        """"""
+        try:
+            return self.serializer_(obj)
+        except:
+            return str(obj)
+
+    # ----------------------------------------------------------------------
+    def deserializer(self, data):
+        """"""
+        try:
+            return self.deserializer_(data)
+        except:
+            return data
 
     # ----------------------------------------------------------------------
     async def run(self) -> None:
