@@ -1,14 +1,17 @@
-   | Developed by `Yeison Nolberto Cardona Álvarez,
-     MSc. <https://github.com/yeisonCardona>`__
-   | `Andrés Marino Álvarez Meza,
-     PhD. <https://github.com/amalvarezme>`__
-   | César Germán Castellanos Dominguez, PhD.
-   | *Digital Signal Processing and Control Group* \| *Grupo de Control
-     y Procesamiento Digital de Señales
-     (*\ `GCPDS <https://github.com/UN-GCPDS/>`__\ *)*
-   | *Universidad Nacional de Colombia sede Manizales*
+   Developed by `Yeison Nolberto Cardona Álvarez,
+   MSc. <https://github.com/yeisonCardona>`__ `Andrés Marino Álvarez
+   Meza, PhD. <https://github.com/amalvarezme>`__ César Germán
+   Castellanos Dominguez, PhD. *Digital Signal Processing and Control
+   Group* \| *Grupo de Control y Procesamiento Digital de Señales
+   (*\ `GCPDS <https://github.com/UN-GCPDS/>`__\ *)* *Universidad
+   Nacional de Colombia sede Manizales*
 
 --------------
+
+.. container:: alert alert-block alert-warning
+
+   Warning: This module is still under development and its features are
+   subject to change in the future.
 
 Chaski Confluent
 ================
@@ -47,6 +50,26 @@ that messages are only sent to relevant nodes, enhancing efficiency and
 reducing unnecessary data transfer. Moreover, Chaski Confluent’s
 resilience through keep-alive checks and graceful reconnections
 guarantees continuous and stable network operations.
+
+Work Plan
+---------
+
+**Capture Exceptions**: Implement robust exception handling across the
+framework to ensure that all potential errors are caught and managed
+gracefully.
+
+**Add Usage Examples**: Provide detailed examples demonstrating the use
+of Chaski Confluent in various scenarios. This will help users
+understand how to integrate and utilize the framework effectively.
+
+**Add Containers**: Integrate containerization support (e.g., Docker) to
+facilitate the deployment and management of Chaski Confluent nodes in
+different environments.
+
+**Add ‘Attach Function’ Feature to ChaskiRemote**: Enhance the
+ChaskiRemote class by adding a feature that allows functions to be
+dynamically attached and executed remotely. This will increase the
+flexibility and usability of remote method invocation.
 
 Main Features of Chaski Confluent
 ---------------------------------
