@@ -449,16 +449,60 @@ class ChaskiNode:
         return f"{h}ChaskiNode@{self.ip}:{self.port}"
 
     # ----------------------------------------------------------------------
-    def serializer(self, obj):
-        """"""
+    def serializer(self, obj: Any) -> bytes:
+        """
+        Serialize the provided object using the configured serializer.
+
+        This method converts a Python object into a bytes representation using the
+        serializer function specified at node initialization. This is typically used
+        for preparing data to be sent over the network.
+
+        Parameters
+        ----------
+        obj : Any
+            The Python object to be serialized. This can be any serializable object,
+            such as dictionaries, lists, or custom objects.
+
+        Returns
+        -------
+        bytes
+            The serialized representation of the input object as bytes.
+
+        Notes
+        -----
+        If the serialization process fails, this method returns the string representation
+        of the object as a fallback.
+        """
         try:
             return self.serializer_(obj)
         except:
             return str(obj)
 
     # ----------------------------------------------------------------------
-    def deserializer(self, data):
-        """"""
+    def deserializer(self, data: bytes) -> Any:
+        """
+        Deserialize the provided data using the configured deserializer.
+
+        This method attempts to convert a bytes object back into its original form
+        (such as an object, string, or other data structures) using the
+        deserializer function specified at the node's initialization.
+
+        Parameters
+        ----------
+        data : bytes
+            The serialized data as a bytes object that needs to be deserialized.
+
+        Returns
+        -------
+        Any
+            The deserialized data, converted back to its original form. This can be
+            any data type that was originally serialized.
+
+        Notes
+        -----
+        If the deserialization process fails, this method returns the raw data
+        as a fallback.
+        """
         try:
             return self.deserializer_(data)
         except:
@@ -801,6 +845,28 @@ class ChaskiNode:
         """
         for edge_ in self.edges:
             if (edge_.ip == ip) and (edge_.port == port):
+                return edge_
+
+    # ----------------------------------------------------------------------
+    def get_edge_by_name(self, node_name: str) -> Optional[Edge]:
+        """
+        Retrieve an existing edge by its node name.
+
+        This method looks up and returns an `Edge` instance that matches the given node name.
+        If no such edge is found, it returns `None`.
+
+        Parameters
+        ----------
+        node_name : str
+            The name of the node to find.
+
+        Returns
+        -------
+        Optional[Edge]
+            The `Edge` instance with the specified node name if found, else `None`.
+        """
+        for edge_ in self.edges:
+            if edge_.name == node_name:
                 return edge_
 
     # ----------------------------------------------------------------------
