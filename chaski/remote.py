@@ -108,7 +108,7 @@ class ChaskiObjectProxying(object):
         '__rdivmod__',
         '__reduce__',
         '__reduce_ex__',
-        # '__repr__',
+        '__repr__',
         '__reversed__',
         '__rfloorfiv__',
         '__rlshift__',
@@ -567,7 +567,7 @@ class ChaskiProxy:
             case 'serialized':
                 return self._node.deserializer(response)
             case 'exception':
-                raise response
+                raise Exception(response)
             case 'repr':
                 return response
 
@@ -644,7 +644,7 @@ class ChaskiRemote(ChaskiNode):
         return f"ChaskiRemote@{self.ip}:{self.port}"
 
     # ----------------------------------------------------------------------
-    def register(self, name: str, service: Any) -> None:
+    def register_module(self, name: str, service: Any) -> None:
         """
         Register a service with a proxy.
 
@@ -662,7 +662,7 @@ class ChaskiRemote(ChaskiNode):
         self.proxies[name] = ChaskiProxy(name, obj=service, node=self)
 
     # ----------------------------------------------------------------------
-    def proxy(self, module: str) -> ChaskiProxy:
+    def proxy(self, module: str, edge=None) -> ChaskiProxy:
         """
         Retrieve a proxy object for the specified service name.
 
@@ -680,7 +680,7 @@ class ChaskiRemote(ChaskiNode):
             The proxy object associated with the specified service name.
         """
         edge = asyncio.get_event_loop().run_until_complete(
-            self._verify_availability(module=module)
+            self._verify_availability(module=module, edge=edge)
         )
 
         if edge:
@@ -688,7 +688,7 @@ class ChaskiRemote(ChaskiNode):
         else:
             logger_remote.warning(f"Module {module} not found in the conected edges")
 
-    # ----------------------------------------------------------------------
+    # ---...-------------------------------------------------------------------
     async def _call_obj_by_proxy(self, **kwargs: dict[str, Any]) -> Any:
         """
         Asynchronously call a method on a proxied object with provided arguments.
@@ -756,7 +756,7 @@ class ChaskiRemote(ChaskiNode):
             return 'exception', 'No proxy available for the requested service'
 
     # ----------------------------------------------------------------------
-    async def _verify_availability(self, module: str) -> Any:
+    async def _verify_availability(self, module: str, edge=None) -> Any:
         """
         Verify the availability of a specified module across connected nodes.
 
@@ -784,11 +784,16 @@ class ChaskiRemote(ChaskiNode):
             'module': module,
         }
         # Iterate through each connected edge to check if the specified module is available on any of them.
-        for edge in self.edges:
+        for edge_ in self.edges:
+
+            if edge:
+                if edge != edge_:
+                    return
+
             # Sends a request to verify if the specified module is available on the remote node.
-            available = await self._generic_request_udp('_verify_module', data, edge)
+            available = await self._generic_request_udp('_verify_module', data, edge_)
             if available:
-                return edge
+                return edge_
         return False
 
     # ----------------------------------------------------------------------
@@ -830,7 +835,7 @@ class ChaskiRemote(ChaskiNode):
             imported_module = importlib.import_module(module)
 
             # Register the dynamically imported module as a service with the node
-            self.register(module, imported_module)
+            self.register_module(module, imported_module)
 
             # Log the registration of the module on the remote node
             logger_remote.warning(f"{self.name}: Registered {module}")
