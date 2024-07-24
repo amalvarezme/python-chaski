@@ -13,11 +13,11 @@
 #     name: python3
 # ---
 
-# > Developed by [Yeison Nolberto Cardona Álvarez, MSc.](https://github.com/yeisonCardona)
-# [Andrés Marino Álvarez Meza, PhD.](https://github.com/amalvarezme)
-# César Germán Castellanos Dominguez, PhD.
-# > _Digital Signal Processing and Control Group_  | _Grupo de Control y Procesamiento Digital de Señales ([GCPDS](https://github.com/UN-GCPDS/))_
-# > _Universidad Nacional de Colombia sede Manizales_
+# > Developed by [Yeison Nolberto Cardona Álvarez, MSc.](https://github.com/yeisonCardona)  
+# [Andrés Marino Álvarez Meza, PhD.](https://github.com/amalvarezme)  
+# César Germán Castellanos Dominguez, PhD.  
+# > _Digital Signal Processing and Control Group_  | _Grupo de Control y Procesamiento Digital de Señales ([GCPDS](https://github.com/UN-GCPDS/))_  
+# > _Universidad Nacional de Colombia sede Manizales_  
 #
 # ----
 
@@ -65,9 +65,6 @@
 #
 # **Message Propagation**:
 # Develop and implement an efficient message propagation mechanism based on topics. This will ensure that messages are only sent to and processed by nodes that have subscribed to specific topics, reducing unnecessary network traffic and enhancing overall communication performance.
-#
-# **File transfer**:
-# Implement robust file transfer capabilities, ensuring secure and efficient transfer of files between nodes. This will support various scenarios where large data files need to be shared across the network.
 
 # ## Main Features of Chaski Confluent
 #

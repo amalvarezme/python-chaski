@@ -154,3 +154,82 @@ async for incoming_message in consumer.message_stream():
 
 # %%
 consumer.stop()
+
+# %% [markdown]
+# ### File Transfer
+#
+# The file transfer functionality allows for large files to be broken down into smaller chunks,
+# which are then sent across the network to subscribed nodes. This ensures that even if a part of the
+# transfer is interrupted, it can resume from the last chunk, making the process robust and fault-tolerant.
+# The use of callbacks for file reception events ensures that custom actions can be performed
+# upon successful receipt of each file.
+#
+# There are two main parameters for this feature: `destiny_folder`, which specifies
+# the folder where incoming files will be stored, and `chunk_size`, which defines
+# the size of data chunks for file transfer.
+#
+
+# %%
+consumer = ChaskiStreamer(
+    port=65432,
+    name='Consumer',
+    subscriptions=['topic1'],
+    enable_incoming_files=True,
+    destiny_folder='dir',
+    chunk_size=1024,
+)
+consumer
+
+# %%
+producer = ChaskiStreamer(
+    port=65433,
+    name='Producer',
+    subscriptions=['topic1'],
+    enable_incoming_files=True,
+    destiny_folder='dir',
+    chunk_size=1024,
+)
+producer
+
+# %% [markdown]
+# Then we can use the method `push_file` to transfer the file to all nodes with
+# the selected topic, ensuring that each chunk of the file is sent efficiently
+# and robustly across the network, even in case of interruptions.
+
+# %%
+with open('test_file_01.jpeg', 'rb') as file:
+    await producer.push_file('topic1', file)
+
+with open('test_file_02.pdf', 'rb') as file:
+    await producer.push_file('topic1', file)
+
+# %% [markdown]
+# The `ChaskiStreamer` automatically listens for incoming files and efficiently
+# transfers file chunks, ensuring successful and robust file delivery across the network,
+# even in the case of interruptions, while allowing for custom actions with callbacks upon file receipt.
+
+# %% [markdown]
+# Additionally, a callback function can be added to execute each time a new file is received,
+# allowing developers to trigger specific actions such as logging, processing the file,
+# or notifying users, thereby offering more flexibility and control over the file handling process
+# within the distributed network.
+
+
+# %%
+def new_file_event(name, path, hash):
+    """"""
+    print(f'{name=}')
+    print(f'{path=}')
+    print(f'{hash=}')
+
+
+consumer = ChaskiStreamer(
+    port=65432,
+    name='Consumer',
+    subscriptions=['topic1'],
+    root=True,
+    enable_incoming_files=True,
+    destiny_folder='dir',
+    file_input_callback=new_file_event,
+)
+consumer
