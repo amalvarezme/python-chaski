@@ -217,17 +217,14 @@ with open('test_file_02.pdf', 'rb') as file:
 
 # %%
 def new_file_event(name, path, hash):
-    """"""
     print(f'{name=}')
     print(f'{path=}')
     print(f'{hash=}')
-
+    
 
 consumer = ChaskiStreamer(
-    port=65432,
-    name='Consumer',
-    subscriptions=['topic1'],
-    root=True,
+    ...
+    
     enable_incoming_files=True,
     destiny_folder='dir',
     file_input_callback=new_file_event,
