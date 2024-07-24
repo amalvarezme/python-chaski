@@ -37,6 +37,7 @@ class ChaskiStreamer(ChaskiNode):
         destiny_folder: str = '.',
         chunk_size: int = 1024,
         file_input_callback: callable = None,
+        enable_incoming_files: bool = False,
         *args: tuple,
         **kwargs: dict,
     ):
@@ -46,27 +47,24 @@ class ChaskiStreamer(ChaskiNode):
         Parameters
         ----------
         destiny_folder : str, optional
-            The folder where the processed files will be stored.
+            The folder where the processed files will be stored. Defaults to the current directory ('.').
         chunk_size : int, optional
-            The size of the chunks in which the files will be processed.
+            The size of the chunks in which the files will be processed. Defaults to 1024 bytes.
         file_input_callback : callable, optional
-            A callback function to handle file inputs.
+            A callback function to handle file inputs. This function should accept `name`, `path`, and `hash` as arguments.
+        enable_incoming_files : bool, optional
+            Flag to enable or disable processing of incoming file chunks. Defaults to False.
         *args : tuple
             Additional positional arguments to pass to the superclass initializer.
         **kwargs : dict
             Additional keyword arguments to pass to the superclass initializer.
-
-        Notes
-        -----
-        This constructor initializes the ChaskiStreamer by invoking the
-        superclass constructor with any additional arguments provided.
-        It also sets up an internal message queue for handling incoming messages.
         """
         super().__init__(*args, **kwargs)
         self.message_queue = Queue()
         self.chunk_size = chunk_size
         self.destiny_folder = destiny_folder
         self.file_input_callback = file_input_callback
+        self.enable_incoming_files = enable_incoming_files
 
     # ----------------------------------------------------------------------
     def __repr__(self):
@@ -188,6 +186,28 @@ class ChaskiStreamer(ChaskiNode):
         await self.message_queue.put(message)
 
     # ----------------------------------------------------------------------
+    def enable_file_transfer(self) -> None:
+        """
+        Enable the processing of incoming file chunks.
+
+        This method sets the `enable_incoming_files` flag to `True`, allowing the
+        `ChaskiStreamer` to process incoming file chunks. When enabled, the
+        `ChaskiStreamer` can receive and handle file transfers as messages
+        containing file chunks are received.
+        """
+        self.enable_incoming_files = True
+
+    # ----------------------------------------------------------------------
+    def disable_file_transfer(self) -> None:
+        """
+        Disable the processing of incoming file chunks.
+
+        This method sets the `enable_incoming_files` flag to `False`, preventing the
+        `ChaskiStreamer` from processing any incoming file chunks until re-enabled.
+        """
+        self.enable_incoming_files = False
+
+    # ----------------------------------------------------------------------
     async def message_stream(self) -> Generator['Message', None, None]:
         """
         Asynchronously generate messages from the message queue.
@@ -280,6 +300,9 @@ class ChaskiStreamer(ChaskiNode):
         data. It checks if the chunk data is empty, indicating that all chunks have been received, and then invokes the
         file_input_callback function, if provided.
         """
+        if not self.enable_incoming_files:
+            return
+
         if chunk := message.data['chunk']:
             with open(
                 os.path.join(self.destiny_folder, message.data['filename']), 'ab'
