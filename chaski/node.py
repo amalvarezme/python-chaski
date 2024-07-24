@@ -927,16 +927,21 @@ class ChaskiNode:
             # Reading data in chunks and processing messages
             while True:
                 # Read the length of data (4 bytes)
-                length_data = await edge.reader.readexactly(4)
-                length_topic = await edge.reader.readexactly(4)
+                try:
+                    length_data_bin = await edge.reader.readexactly(4)
+                    length_topic_bin = await edge.reader.readexactly(4)
+                except:
+                    await asyncio.sleep(0.1)
+                    continue
 
                 # Check if the length of data is zero or missing
-                if not length_data:
-                    return None
+                if not length_data_bin:
+                    await asyncio.sleep(0.1)
+                    continue
 
                 # Convert the first 4 bytes to integer representing data length and topic length in bytes
-                length_data = int.from_bytes(length_data, byteorder="big")
-                length_topic = int.from_bytes(length_topic, byteorder="big")
+                length_data = int.from_bytes(length_data_bin, byteorder="big")
+                length_topic = int.from_bytes(length_topic_bin, byteorder="big")
 
                 # Read the topic from the edge reader exactly matching the topic length
                 topic = await edge.reader.readexactly(length_topic)
