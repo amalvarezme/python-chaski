@@ -156,7 +156,7 @@ async for incoming_message in consumer.message_stream():
 consumer.stop()
 
 # %% [markdown]
-# ### File Transfer
+# ## File Transfer
 #
 # The file transfer functionality allows for large files to be broken down into smaller chunks,
 # which are then sent across the network to subscribed nodes. This ensures that even if a part of the
