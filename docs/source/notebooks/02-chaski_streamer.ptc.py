@@ -15,6 +15,7 @@
 
 # %% nbsphinx="hidden"
 import sys
+
 sys.path.append('../../..')
 
 # %% [markdown]
@@ -23,13 +24,13 @@ sys.path.append('../../..')
 # The `ChaskiStreamer` class is designed to efficiently stream messages across a distributed network of nodes.
 # It offers scalable solutions for handling large volumes of data and ensures timely delivery across the network.
 #
-# **Key Features:**  
+# **Key Features:**
 #
-#  - **High Throughput:** Optimized for streaming large volumes of messages.  
-#  - **Low Latency:** Ensures minimal delay in message delivery across distributed nodes.  
-#  - **Fault Tolerance:** Robust mechanisms to handle node failures and network issues.  
-#  - **Dynamic Scaling:** Automatically adjusts to the number of nodes and message load.  
-#  - **Subscription-based Streaming:** Allows nodes to subscribe to specific topics of interest.  
+#  - **High Throughput:** Optimized for streaming large volumes of messages.
+#  - **Low Latency:** Ensures minimal delay in message delivery across distributed nodes.
+#  - **Fault Tolerance:** Robust mechanisms to handle node failures and network issues.
+#  - **Dynamic Scaling:** Automatically adjusts to the number of nodes and message load.
+#  - **Subscription-based Streaming:** Allows nodes to subscribe to specific topics of interest.
 #
 # ## Create Streamer
 #
@@ -115,7 +116,7 @@ consumer = ChaskiStreamer(
 consumer
 
 # %% [markdown]
-#  ### Receiving Messages using 'async with'
+# ### Receiving Messages using 'async with'
 #
 # The `ChaskiStreamer` allows for another method to consume messages using asynchronous context managers.
 # With the `async with` statement, you can handle incoming messages in a more streamlined way:
