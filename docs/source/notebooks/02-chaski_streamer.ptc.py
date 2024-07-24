@@ -232,4 +232,3 @@ consumer = ChaskiStreamer(
     destiny_folder='dir',
     file_input_callback=new_file_event,
 )
-consumer
