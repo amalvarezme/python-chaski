@@ -14,6 +14,7 @@ Classes
     - *ChaskiStreamer*: Extends ChaskiNode to provide asynchronous message streaming capabilities.
 """
 
+import os
 from asyncio import Queue
 from typing import Generator
 from chaski.node import ChaskiNode
@@ -31,12 +32,25 @@ class ChaskiStreamer(ChaskiNode):
     """
 
     # ----------------------------------------------------------------------
-    def __init__(self, *args: tuple, **kwargs: dict):
+    def __init__(
+        self,
+        destiny_folder: str = '.',
+        chunk_size: int = 1024,
+        file_input_callback: callable = None,
+        *args: tuple,
+        **kwargs: dict,
+    ):
         """
         Initialize a new instance of ChaskiStreamer.
 
         Parameters
         ----------
+        destiny_folder : str, optional
+            The folder where the processed files will be stored.
+        chunk_size : int, optional
+            The size of the chunks in which the files will be processed.
+        file_input_callback : callable, optional
+            A callback function to handle file inputs.
         *args : tuple
             Additional positional arguments to pass to the superclass initializer.
         **kwargs : dict
@@ -50,6 +64,9 @@ class ChaskiStreamer(ChaskiNode):
         """
         super().__init__(*args, **kwargs)
         self.message_queue = Queue()
+        self.chunk_size = chunk_size
+        self.destiny_folder = destiny_folder
+        self.file_input_callback = file_input_callback
 
     # ----------------------------------------------------------------------
     def __repr__(self):
@@ -129,6 +146,22 @@ class ChaskiStreamer(ChaskiNode):
         self.stop()
 
     # ----------------------------------------------------------------------
+    async def push(self, topic: str, data: bytes = None) -> None:
+        """
+        Write a message to the specified topic.
+
+        This method allows the asynchronous sending of messages to a designated topic. The message data, if provided, is encapsulated in a `ChaskiMessage` and dispatched to the relevant subscribers within the network.
+
+        Parameters
+        ----------
+        topic : str
+            The topic to which the message is to be sent. Each message is delivered exclusively to the nodes subscribing to this topic.
+        data : bytes, optional
+            The byte-encoded data to be sent with the message. This could be any binary payload that subscribers are expected to process.
+        """
+        await self._write('ChaskiMessage', data=data, topic=topic)
+
+    # ----------------------------------------------------------------------
     async def _process_ChaskiMessage(self, message: 'Message', edge: 'Edge') -> None:
         """
         Process an incoming Chaski message and place it onto the message queue.
@@ -155,22 +188,6 @@ class ChaskiStreamer(ChaskiNode):
         await self.message_queue.put(message)
 
     # ----------------------------------------------------------------------
-    async def push(self, topic: str, data: bytes = None) -> None:
-        """
-        Write a message to the specified topic.
-
-        This method allows the asynchronous sending of messages to a designated topic. The message data, if provided, is encapsulated in a `ChaskiMessage` and dispatched to the relevant subscribers within the network.
-
-        Parameters
-        ----------
-        topic : str
-            The topic to which the message is to be sent. Each message is delivered exclusively to the nodes subscribing to this topic.
-        data : bytes, optional
-            The byte-encoded data to be sent with the message. This could be any binary payload that subscribers are expected to process.
-        """
-        await self._write('ChaskiMessage', data=data, topic=topic)
-
-    # ----------------------------------------------------------------------
     async def message_stream(self) -> Generator['Message', None, None]:
         """
         Asynchronously generate messages from the message queue.
@@ -195,3 +212,84 @@ class ChaskiStreamer(ChaskiNode):
             message = await self.message_queue.get()
             yield message
         self.stop()
+
+    # ----------------------------------------------------------------------
+    async def push_file(
+        self, topic: str, file: 'IOBase', filename: str = None, hash: str = None
+    ):
+        """
+        Asynchronously sends a file chunk by chunk to the specified topic.
+
+        This method reads the file in chunks and sends each chunk as a separate message
+        to the specified topic. The file's metadata, including filename and hash,
+        can also be sent along with the chunks. This allows for efficient and scalable
+        file transfer in a distributed network.
+
+        Parameters
+        ----------
+        topic : str
+            The topic to which the file chunks are to be sent. Nodes subscribing to this
+            topic will receive the file chunks.
+        file : IOBase
+            A file-like object (must support `read` method). The file from which the data is read
+            and sent in chunks.
+        filename : str, optional
+            The name of the file being sent. If not provided, the name attribute of the file object is used.
+        hash : str, optional
+            A hash of the file (if already computed). Helps to ensure data integrity during transfer.
+
+        Notes
+        -----
+        This method uses asynchronous I/O to read the file in chunks and send each chunk
+        without blocking the event loop. It ensures that the entire file is processed and sent
+        even if the process involves multiple chunks.
+        """
+        while True:
+            chunk = file.read(self.chunk_size)
+            data = {
+                'filename': filename if filename else file.name,
+                'chunk': chunk,
+                'hash': hash,
+            }
+            await self._write('ChaskiFile', data=data, topic=topic)
+
+            if not chunk:
+                break
+
+    # ----------------------------------------------------------------------
+    async def _process_ChaskiFile(self, message: 'Message', edge: 'Edge') -> None:
+        """
+        Process an incoming ChaskiFile message and append each chunk of data to the target file.
+
+        This method handles the processing of incoming file chunks sent over the network within a ChaskiFile message.
+        Each chunk is appended to the file specified by the filename in the message data. When all chunks have been received,
+        the callback function specified by file_input_callback is invoked.
+
+        Parameters
+        ----------
+        message : Message
+            The Chaski message that contains the file chunk data. This message includes attributes such as the filename,
+            chunk data, and file hash.
+        edge : Edge
+            The network edge (connection) from which the message was received. This can be used for additional context
+            about the sender.
+
+        Notes
+        -----
+        This method performs asynchronous file I/O using the `open` function with the 'ab' mode to append each chunk of
+        data. It checks if the chunk data is empty, indicating that all chunks have been received, and then invokes the
+        file_input_callback function, if provided.
+        """
+        if chunk := message.data['chunk']:
+            with open(
+                os.path.join(self.destiny_folder, message.data['filename']), 'ab'
+            ) as file:
+                file.write(chunk)
+
+        else:
+            if callable(self.file_input_callback):
+                self.file_input_callback(
+                    name=message.data['filename'],
+                    path=os.path.join(self.destiny_folder, message.data['filename']),
+                    hash=message.data['hash'],
+                )
