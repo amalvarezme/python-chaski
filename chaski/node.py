@@ -475,8 +475,9 @@ class ChaskiNode:
         """
         try:
             return self.serializer_(obj)
-        except:
-            return str(obj)
+        except Exception as e:
+            raise Exception(f"Serialization error: {str(e)}")
+            # return str(e).encode()
 
     # ----------------------------------------------------------------------
     def deserializer(self, data: bytes) -> Any:
