@@ -15,6 +15,8 @@ Classes
 """
 
 import os
+import asyncio
+import hashlib
 from asyncio import Queue
 from typing import Generator
 from chaski.node import ChaskiNode
@@ -35,9 +37,9 @@ class ChaskiStreamer(ChaskiNode):
     def __init__(
         self,
         destiny_folder: str = '.',
-        chunk_size: int = 1024,
+        chunk_size: int = 8192,
         file_input_callback: callable = None,
-        enable_incoming_files: bool = False,
+        allow_incoming_files: bool = False,
         *args: tuple,
         **kwargs: dict,
     ):
@@ -52,7 +54,7 @@ class ChaskiStreamer(ChaskiNode):
             The size of the chunks in which the files will be processed. Defaults to 1024 bytes.
         file_input_callback : callable, optional
             A callback function to handle file inputs. This function should accept `name`, `path`, and `hash` as arguments.
-        enable_incoming_files : bool, optional
+        allow_incoming_files : bool, optional
             Flag to enable or disable processing of incoming file chunks. Defaults to False.
         *args : tuple
             Additional positional arguments to pass to the superclass initializer.
@@ -64,7 +66,7 @@ class ChaskiStreamer(ChaskiNode):
         self.chunk_size = chunk_size
         self.destiny_folder = destiny_folder
         self.file_input_callback = file_input_callback
-        self.enable_incoming_files = enable_incoming_files
+        self.allow_incoming_files = allow_incoming_files
 
     # ----------------------------------------------------------------------
     def __repr__(self):
@@ -93,6 +95,73 @@ class ChaskiStreamer(ChaskiNode):
             A string representation of the ChaskiStreamer address.
         """
         return f"ChaskiStreamer@{self.ip}:{self.port}"
+
+    # ----------------------------------------------------------------------
+    @classmethod
+    def get_hash(cls, file: str, algorithm: str = 'sha256') -> str:
+        """
+        Compute the hash of a file using the specified algorithm.
+
+        This method reads the file in chunks and computes the hash digest
+        using the provided hashing algorithm. The default algorithm is SHA-256.
+
+        Parameters
+        ----------
+        file : str
+            The path to the file for which to compute the hash.
+        algorithm : str, optional
+            The hashing algorithm to use. Defaults to 'sha256'.
+            Other common algorithms include 'md5', 'sha1', 'sha512', etc.
+
+        Returns
+        -------
+        str
+            The hexadecimal hash digest of the file.
+        """
+        hash_func = hashlib.new(algorithm)
+        with open(file, 'rb') as f:
+            while chunk := f.read(8192):  # Read the file in 8192 byte blocks
+                hash_func.update(chunk)
+        return hash_func.hexdigest()
+
+    # ----------------------------------------------------------------------
+    def _get_status(self, **kwargs) -> dict:
+        """
+        Retrieve the status of the node.
+
+        This method compiles and returns a dictionary containing the current status
+        details of the node. The status includes information about the node's
+        paired events for each subscription, whether the server is closing,
+        and whether the node is in the process of attempting to reconnect.
+
+        Parameters
+        ----------
+        **kwargs : dict, optional
+            Additional status information that can be passed as key-value pairs and
+            will be included in the returned status dictionary.
+
+        Returns
+        -------
+        dict
+            A dictionary containing the status details of the node. The keys include:
+            - 'paired': A dictionary where keys are subscription topics and values are boolean
+                        indicating whether the node is paired for that subscription.
+            - 'serving': Boolean value indicating whether the server is closing (`False`) or not (`True`).
+            - 'reconnecting': Boolean value indicating whether the node is currently attempting to
+                              reconnect to a peer (`True`) or not (`False`).
+        """
+        return {
+            # Get the status of paired events for each subscription
+            "paired": {
+                sub: self.paired_event[sub].is_set() for sub in self.subscriptions
+            },
+            # Check if the server is closing; 'True' means it's still serving.
+            "serving": not self.server_closing,
+            # Check if the node's reconnecting event is currently set, implying it is trying to reconnect to a peer.
+            "reconnecting": self.reconnecting.is_set(),
+            "allow_incoming_files": self.allow_incoming_files,
+            **kwargs,
+        }
 
     # ----------------------------------------------------------------------
     async def __aenter__(self) -> Generator['Message', None, None]:
@@ -141,7 +210,7 @@ class ChaskiStreamer(ChaskiNode):
         asynchronous context that supports the asynchronous context manager
         protocol.
         """
-        self.stop()
+        await self.stop()
 
     # ----------------------------------------------------------------------
     async def push(self, topic: str, data: bytes = None) -> None:
@@ -186,26 +255,26 @@ class ChaskiStreamer(ChaskiNode):
         await self.message_queue.put(message)
 
     # ----------------------------------------------------------------------
-    def enable_file_transfer(self) -> None:
+    def activate_file_transfer(self) -> None:
         """
         Enable the processing of incoming file chunks.
 
-        This method sets the `enable_incoming_files` flag to `True`, allowing the
+        This method sets the `allow_incoming_files` flag to `True`, allowing the
         `ChaskiStreamer` to process incoming file chunks. When enabled, the
         `ChaskiStreamer` can receive and handle file transfers as messages
         containing file chunks are received.
         """
-        self.enable_incoming_files = True
+        self.allow_incoming_files = True
 
     # ----------------------------------------------------------------------
-    def disable_file_transfer(self) -> None:
+    def deactivate_file_transfer(self) -> None:
         """
         Disable the processing of incoming file chunks.
 
-        This method sets the `enable_incoming_files` flag to `False`, preventing the
+        This method sets the `allow_incoming_files` flag to `False`, preventing the
         `ChaskiStreamer` from processing any incoming file chunks until re-enabled.
         """
-        self.enable_incoming_files = False
+        self.allow_incoming_files = False
 
     # ----------------------------------------------------------------------
     async def message_stream(self) -> Generator['Message', None, None]:
@@ -235,7 +304,11 @@ class ChaskiStreamer(ChaskiNode):
 
     # ----------------------------------------------------------------------
     async def push_file(
-        self, topic: str, file: 'IOBase', filename: str = None, hash: str = None
+        self,
+        topic: str,
+        file: 'IOBase',
+        filename: str = None,
+        data: dict = {},
     ):
         """
         Asynchronously sends a file chunk by chunk to the specified topic.
@@ -255,8 +328,6 @@ class ChaskiStreamer(ChaskiNode):
             and sent in chunks.
         filename : str, optional
             The name of the file being sent. If not provided, the name attribute of the file object is used.
-        hash : str, optional
-            A hash of the file (if already computed). Helps to ensure data integrity during transfer.
 
         Notes
         -----
@@ -264,17 +335,47 @@ class ChaskiStreamer(ChaskiNode):
         without blocking the event loop. It ensures that the entire file is processed and sent
         even if the process involves multiple chunks.
         """
-        while True:
-            chunk = file.read(self.chunk_size)
-            data = {
-                'filename': filename if filename else file.name,
-                'chunk': chunk,
-                'hash': hash,
-            }
-            await self._write('ChaskiFile', data=data, topic=topic)
+        # Check the status of each edge and collect those that allow incoming files
+        edges = []
+        for edge in self.edges:
+            status = await self._request_status(edge.ip, edge.port)
+            if status.data['allow_incoming_files']:
+                edges.append(edge)
 
+        # If no edges allow incoming files, return False
+        if not edges:
+            return False
+
+        size = 0
+        # Initialize a SHA-256 hash function for computing the hash digest of the file chunks
+        hash_func = hashlib.new('sha256')
+        while True:
+            # Read the next chunk of data from the file up to the specified chunk size
+            chunk = file.read(self.chunk_size)
+            # Increment the size by the length of the current chunk
+            size += len(chunk)
+            # Update the hash function with the current chunk of data.
+            hash_func.update(chunk)
+            # Package the chunked file data along with metadata such as filename, hash, and chunk size
+            package_data = {
+                'filename': filename if filename else os.path.split(file.name)[-1],
+                'chunk': chunk,
+                'hash': hash_func.hexdigest(),
+                'data': data,
+                'chunk_size': self.chunk_size,
+                'size': size,
+            }
+
+            # Send each file chunk to all edges and ensure non-blocking behavior with async sleep
+            for edge in edges:
+                await self._write(
+                    'ChaskiFile', data=package_data, topic=topic, edge=edge
+                )
+                await asyncio.sleep(0)  # very important sleep
+
+            # If no more chunks are available to read, the file transfer is complete
             if not chunk:
-                break
+                return True
 
     # ----------------------------------------------------------------------
     async def _process_ChaskiFile(self, message: 'Message', edge: 'Edge') -> None:
@@ -300,19 +401,25 @@ class ChaskiStreamer(ChaskiNode):
         data. It checks if the chunk data is empty, indicating that all chunks have been received, and then invokes the
         file_input_callback function, if provided.
         """
-        if not self.enable_incoming_files:
+        # Check if the processing of incoming file chunks is allowed.
+        if not self.allow_incoming_files:
             return
 
-        if chunk := message.data['chunk']:
+        # Append incoming file chunk data to the target file in append-binary mode
+        if chunk := message.data.pop('chunk'):
             with open(
                 os.path.join(self.destiny_folder, message.data['filename']), 'ab'
             ) as file:
+                # Write the current chunk to the target file in append-binary mode
                 file.write(chunk)
 
         else:
+            # Invoke the file input callback if it is callable, passing message data and destiny folder
             if callable(self.file_input_callback):
+                # If a file input callback is defined, call it with message data and destiny folder
                 self.file_input_callback(
-                    name=message.data['filename'],
-                    path=os.path.join(self.destiny_folder, message.data['filename']),
-                    hash=message.data['hash'],
+                    **{
+                        **message.data,
+                        'destiny_folder': self.destiny_folder,
+                    }
                 )
