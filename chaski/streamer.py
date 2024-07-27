@@ -335,15 +335,8 @@ class ChaskiStreamer(ChaskiNode):
         without blocking the event loop. It ensures that the entire file is processed and sent
         even if the process involves multiple chunks.
         """
-        # Check the status of each edge and collect those that allow incoming files
-        edges = []
-        for edge in self.edges:
-            status = await self._request_status(edge.ip, edge.port)
-            if status.data['allow_incoming_files']:
-                edges.append(edge)
-
         # If no edges allow incoming files, return False
-        if not edges:
+        if not self.edges:
             return False
 
         size = 0
@@ -366,12 +359,9 @@ class ChaskiStreamer(ChaskiNode):
                 'size': size,
             }
 
-            # Send each file chunk to all edges and ensure non-blocking behavior with async sleep
-            for edge in edges:
-                await self._write(
-                    'ChaskiFile', data=package_data, topic=topic, edge=edge
-                )
-                await asyncio.sleep(0)  # very important sleep
+            # Send the chunked file data as a message to the specified topic and yield control to the event loop
+            await self._write('ChaskiFile', data=package_data, topic=topic)
+            await asyncio.sleep(0)  # very important sleep
 
             # If no more chunks are available to read, the file transfer is complete
             if not chunk:
