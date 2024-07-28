@@ -36,9 +36,9 @@ class ChaskiStreamer(ChaskiNode):
     # ----------------------------------------------------------------------
     def __init__(
         self,
-        destiny_folder: str = '.',
+        destination_folder: str = '.',
         chunk_size: int = 8192,
-        file_input_callback: callable = None,
+        file_handling_callback: callable = None,
         allow_incoming_files: bool = False,
         *args: tuple,
         **kwargs: dict,
@@ -48,11 +48,11 @@ class ChaskiStreamer(ChaskiNode):
 
         Parameters
         ----------
-        destiny_folder : str, optional
+        destination_folder : str, optional
             The folder where the processed files will be stored. Defaults to the current directory ('.').
         chunk_size : int, optional
             The size of the chunks in which the files will be processed. Defaults to 1024 bytes.
-        file_input_callback : callable, optional
+        file_handling_callback : callable, optional
             A callback function to handle file inputs. This function should accept `name`, `path`, and `hash` as arguments.
         allow_incoming_files : bool, optional
             Flag to enable or disable processing of incoming file chunks. Defaults to False.
@@ -64,8 +64,8 @@ class ChaskiStreamer(ChaskiNode):
         super().__init__(*args, **kwargs)
         self.message_queue = Queue()
         self.chunk_size = chunk_size
-        self.destiny_folder = destiny_folder
-        self.file_input_callback = file_input_callback
+        self.destination_folder = destination_folder
+        self.file_handling_callback = file_handling_callback
         self.allow_incoming_files = allow_incoming_files
 
     # ----------------------------------------------------------------------
@@ -335,10 +335,6 @@ class ChaskiStreamer(ChaskiNode):
         without blocking the event loop. It ensures that the entire file is processed and sent
         even if the process involves multiple chunks.
         """
-        # If no edges allow incoming files, return False
-        if not self.edges:
-            return False
-
         size = 0
         # Initialize a SHA-256 hash function for computing the hash digest of the file chunks
         hash_func = hashlib.new('sha256')
@@ -365,7 +361,7 @@ class ChaskiStreamer(ChaskiNode):
 
             # If no more chunks are available to read, the file transfer is complete
             if not chunk:
-                return True
+                break
 
     # ----------------------------------------------------------------------
     async def _process_ChaskiFile(self, message: 'Message', edge: 'Edge') -> None:
@@ -398,18 +394,18 @@ class ChaskiStreamer(ChaskiNode):
         # Append incoming file chunk data to the target file in append-binary mode
         if chunk := message.data.pop('chunk'):
             with open(
-                os.path.join(self.destiny_folder, message.data['filename']), 'ab'
+                os.path.join(self.destination_folder, message.data['filename']), 'ab'
             ) as file:
                 # Write the current chunk to the target file in append-binary mode
                 file.write(chunk)
 
         else:
             # Invoke the file input callback if it is callable, passing message data and destiny folder
-            if callable(self.file_input_callback):
+            if callable(self.file_handling_callback):
                 # If a file input callback is defined, call it with message data and destiny folder
-                self.file_input_callback(
+                self.file_handling_callback(
                     **{
                         **message.data,
-                        'destiny_folder': self.destiny_folder,
+                        'destiny_folder': self.destination_folder,
                     }
                 )
