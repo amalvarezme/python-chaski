@@ -31,10 +31,11 @@ class TestSubscriptions(unittest.IsolatedAsyncioTestCase):
     This test case defines the infrastructure to create multiple ChaskiNode instances
     and validate the correct establishment of connections based on their subscription topics.
     """
+
     host = '127.0.0.1'
 
     # ----------------------------------------------------------------------
-    def _close_nodes(self, nodes: list['ChaskiNode']):
+    async def _close_nodes(self, nodes: list['ChaskiNode']):
         """
         Close all ChaskiNode instances in the provided list.
 
@@ -47,10 +48,12 @@ class TestSubscriptions(unittest.IsolatedAsyncioTestCase):
             A list containing instances of ChaskiNode that need to be stopped.
         """
         for node in nodes:
-            node.stop()
+            await node.stop()
 
     # ----------------------------------------------------------------------
-    def assertConnection(self, node1: 'ChaskiNode', node2: 'ChaskiNode', msg: Optional[str] = None):
+    def assertConnection(
+        self, node1: 'ChaskiNode', node2: 'ChaskiNode', msg: Optional[str] = None
+    ):
         """
         Assert that two ChaskiNodes are connected to each other.
 
@@ -77,7 +80,9 @@ class TestSubscriptions(unittest.IsolatedAsyncioTestCase):
         return self.assertTrue(conn, msg)
 
     # ----------------------------------------------------------------------
-    def assertNoConnection(self, node1: 'ChaskiNode', node2: 'ChaskiNode', msg: Optional[str] = None):
+    def assertNoConnection(
+        self, node1: 'ChaskiNode', node2: 'ChaskiNode', msg: Optional[str] = None
+    ):
         """
         Assert that two ChaskiNodes are not connected to each other.
 
@@ -132,11 +137,23 @@ class TestSubscriptions(unittest.IsolatedAsyncioTestCase):
             await node.discovery(on_pair='none')
 
         await asyncio.sleep(0.3)
-        self.assertConnection(nodes[0], nodes[3], "Node 0 should be connected to Node 3 because both nodes are subscribed to the topic 'A'.")
-        self.assertConnection(nodes[1], nodes[4], "Node 1 should be connected to Node 4 because both nodes are subscribed to the topic 'B'.")
-        self.assertConnection(nodes[2], nodes[5], "Node 2 should be connected to Node 5 because both nodes are subscribed to the topic 'C'.")
+        self.assertConnection(
+            nodes[0],
+            nodes[3],
+            "Node 0 should be connected to Node 3 because both nodes are subscribed to the topic 'A'.",
+        )
+        self.assertConnection(
+            nodes[1],
+            nodes[4],
+            "Node 1 should be connected to Node 4 because both nodes are subscribed to the topic 'B'.",
+        )
+        self.assertConnection(
+            nodes[2],
+            nodes[5],
+            "Node 2 should be connected to Node 5 because both nodes are subscribed to the topic 'C'.",
+        )
 
-        self._close_nodes(nodes)
+        await self._close_nodes(nodes)
 
     # ----------------------------------------------------------------------
     async def test_single_subscription_with_disconnect(self):
@@ -150,19 +167,34 @@ class TestSubscriptions(unittest.IsolatedAsyncioTestCase):
             await node.discovery(on_pair='disconnect')
 
         await asyncio.sleep(0.3)
-        self.assertConnection(nodes[0], nodes[3], "Node 0 must connect to Node 3 since both are subscribed to 'A'.")
-        self.assertConnection(nodes[0], nodes[4], "Node 0 must connect to Node 4 since they both subscribe to 'A' and 'B'.")
-        self.assertConnection(nodes[1], nodes[4], "Node 1 must connect to Node 4 since both are subscribed to 'B'.")
-        self.assertConnection(nodes[2], nodes[5], "Node 2 must connect to Node 5 since both are subscribed to 'C'.")
-        self.assertNoConnection(nodes[0], nodes[5], "Node 0 must not connect to Node 5 since their subscriptions do not overlap.")
+        self.assertConnection(
+            nodes[0],
+            nodes[3],
+            "Node 0 must connect to Node 3 since both are subscribed to 'A'.",
+        )
+        self.assertConnection(
+            nodes[0],
+            nodes[4],
+            "Node 0 must connect to Node 4 since they both subscribe to 'A' and 'B'.",
+        )
+        self.assertConnection(
+            nodes[1],
+            nodes[4],
+            "Node 1 must connect to Node 4 since both are subscribed to 'B'.",
+        )
+        self.assertConnection(
+            nodes[2],
+            nodes[5],
+            "Node 2 must connect to Node 5 since both are subscribed to 'C'.",
+        )
+        self.assertNoConnection(
+            nodes[0],
+            nodes[5],
+            "Node 0 must not connect to Node 5 since their subscriptions do not overlap.",
+        )
 
-        self._close_nodes(nodes)
-
-
+        await self._close_nodes(nodes)
 
 
 if __name__ == '__main__':
     unittest.main()
-
-
-

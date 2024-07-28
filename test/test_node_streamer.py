@@ -113,7 +113,7 @@ class TestStreamer(unittest.IsolatedAsyncioTestCase):
             )
             hash = ChaskiStreamer.get_hash(
                 os.path.join(
-                    kwargs['destiny_folder'],
+                    kwargs['destination_folder'],
                     kwargs['filename'],
                 )
             )
@@ -130,8 +130,8 @@ class TestStreamer(unittest.IsolatedAsyncioTestCase):
             #
             # File transfer
             allow_incoming_files=True,
-            file_input_callback=new_file_event,
-            destiny_folder=os.path.join('testdir', 'output'),
+            file_handling_callback=new_file_event,
+            destination_folder=os.path.join('testdir', 'output'),
         )
 
         consumer = ChaskiStreamer(
@@ -141,8 +141,8 @@ class TestStreamer(unittest.IsolatedAsyncioTestCase):
             #
             # File transfer
             allow_incoming_files=True,
-            file_input_callback=new_file_event,
-            destiny_folder=os.path.join('testdir', 'output'),
+            file_handling_callback=new_file_event,
+            destination_folder=os.path.join('testdir', 'output'),
         )
 
         await asyncio.sleep(0.3)
@@ -201,7 +201,7 @@ class TestStreamer(unittest.IsolatedAsyncioTestCase):
             #
             # File transfer
             allow_incoming_files=True,
-            destiny_folder=os.path.join('testdir', 'output'),
+            destination_folder=os.path.join('testdir', 'output'),
         )
 
         consumer = ChaskiStreamer(
@@ -211,7 +211,7 @@ class TestStreamer(unittest.IsolatedAsyncioTestCase):
             #
             # File transfer
             allow_incoming_files=False,
-            destiny_folder=os.path.join('testdir', 'output'),
+            destination_folder=os.path.join('testdir', 'output'),
         )
 
         await asyncio.sleep(0.3)
@@ -224,11 +224,13 @@ class TestStreamer(unittest.IsolatedAsyncioTestCase):
             os.remove(os.path.join('testdir', 'output', filename))
 
         with open(os.path.join('testdir', 'input', filename), 'rb') as file:
-            done = await producer.push_file('topicF', file)
-            self.assertFalse(
-                done, 'File transfer should fail as consumer has file transfer disabled'
-            )
+            await producer.push_file('topicF', file)
 
+        await asyncio.sleep(0.5)
+        self.assertFalse(
+            os.path.exists(os.path.join('testdir', 'output', filename)),
+            'File transfer should fail as consumer has file transfer disabled',
+        )
         await asyncio.sleep(1)
         await consumer.stop()
         await producer.stop()

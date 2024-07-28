@@ -352,9 +352,9 @@ class TestConnections:
         await asyncio.sleep(0.5)
 
         dummy_data = {
-            nodes[0]._gen_id(): nodes[0]._gen_id(),
-            nodes[0]._gen_id(): nodes[0]._gen_id(),
-            nodes[0]._gen_id(): nodes[0]._gen_id(),
+            nodes[0].uuid(): nodes[0].uuid(),
+            nodes[0].uuid(): nodes[0].uuid(),
+            nodes[0].uuid(): nodes[0].uuid(),
         }
         response_data = await nodes[0]._test_generic_request_udp(dummy_data)
         self.assertEqual(

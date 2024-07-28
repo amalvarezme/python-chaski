@@ -48,10 +48,10 @@ class TestRemote(unittest.IsolatedAsyncioTestCase):
             If the client manages to access the module's attributes or
             if the connection steps fail.
         """
-        server = ChaskiRemote(port='65432', available=[])
+        server = ChaskiRemote(port=65432, available=[])
         await asyncio.sleep(0.3)
 
-        client = ChaskiRemote()
+        client = ChaskiRemote(port=65433)
         await client.connect(server.address)
         await asyncio.sleep(0.3)
 
@@ -85,10 +85,10 @@ class TestRemote(unittest.IsolatedAsyncioTestCase):
             If the proxied 'os' module's method call results do not match the expected values, or
             if any exceptions are encountered during the test steps.
         """
-        server = ChaskiRemote(port='65433', available=['os'])
+        server = ChaskiRemote(port=65434, available=['os'])
         await asyncio.sleep(0.3)
 
-        client = ChaskiRemote()
+        client = ChaskiRemote(port=65435)
         await client.connect(server.address)
         await asyncio.sleep(0.3)
 
