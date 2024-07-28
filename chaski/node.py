@@ -19,19 +19,18 @@ Classes
       requests, and orchestrate network-wide actions.
 """
 
+import os
+import re
+import uuid
+import time
+import pickle
 import asyncio
 import logging
-import os
-import pickle
-import random
-import re
 import socket
-import time
 import traceback
-from dataclasses import dataclass, field
 from datetime import datetime
 from functools import cached_property
-from string import ascii_letters
+from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, List, Literal, Optional, Tuple, Union
 
 # Initialize loggers for the main node operations, edge connections, and UDP protocol
@@ -48,6 +47,32 @@ FAVORITE_PORTS = [
     8515,
     8516,
 ]
+
+
+########################################################################
+class MessagesPool:
+    """"""
+
+    # ----------------------------------------------------------------------
+    def __init__(self, maxzise=128):
+        """Constructor"""
+        self.pool = []
+        self.maxzise = maxzise
+
+    # ----------------------------------------------------------------------
+    def append(self, item):
+        """"""
+        if item in self.pool:
+            self.pool.remove(item)
+        else:
+            if len(self.pool) > self.maxzise:
+                self.pool.pop(0)
+        self.pool.append(item)
+
+    # ----------------------------------------------------------------------
+    def __contains__(self, item):
+        """"""
+        return item in self.pool
 
 
 ########################################################################
@@ -201,37 +226,56 @@ class Edge:
                 f"Updated latency: {self.latency: .2f}, jitter: {self.jitter: .2f}."
             )
 
+    # ----------------------------------------------------------------------
+    def __eq__(self, other):
+        if isinstance(other, Edge):
+            return (self.writer == other.writer) and (self.reader == other.reader)
+        return False
+
 
 ########################################################################
 @dataclass
 class Message:
     """
-    A class to represent a message with a specific command and associated data, along with a timestamp indicating when it was created.
+    A class to represent a message with a specific command and associated data, along with a timestamp indicating when it was created, a topic for categorization, a TTL (time-to-live) value, and a unique identifier (UUID).
 
     This class is designed to encapsulate all necessary details of a message within a network communication context.
     Each message carries a command that indicates the action to be performed, the data required to execute the action,
-    and the time at which the message was instantiated. The timestamp is particularly useful for logging and
-    debugging purposes, as it helps determine when the message was generated relative to other events.
+    the time at which the message was instantiated, an optional topic to categorize the message, a TTL value
+    to indicate the lifespan of the message in hops, and a UUID to uniquely identify the message.
 
     Parameters
     ----------
     command : str
         The specific command or instruction that this message signifies. Commands are typically predefined and
         understood by both the sender and receiver in the communication protocol being implemented.
-    data : Any
+    topic : str, optional
+        An optional topic string used to categorize the message. Defaults to an empty string.
+    data : Any, optional
         The payload of the message containing the data that the command operates on. This can be any type of data
         struct, such as a string, dictionary, or a custom object, and its structure depends on the specific needs
-        of the command.
-    timestamp : datetime
+        of the command. Defaults to None.
+    timestamp : datetime, optional
         The exact date and time when the message was created, represented as a datetime object. The timestamp provides
         chronological context for the message's creation, aiding in message tracking, ordering, and latency calculations.
-
+        Defaults to 0.
+    ttl : int, optional
+        Time-to-live value for the message, indicating the maximum number of hops the message can take. Defaults to 64.
+    uuid : str, optional
+        A unique identifier for the message, represented as a string. Defaults to None.
     """
 
     command: str
     topic: str = ''
     data: Any = None
     timestamp: datetime = 0
+    ttl: int = 64
+    uuid: str = None
+
+    # ----------------------------------------------------------------------
+    def decrement_ttl(self) -> None:
+        """"""
+        self.ttl -= 1
 
 
 ########################################################################
@@ -328,6 +372,8 @@ class ChaskiNode:
         root: bool = False,
         max_connections: int = 5,
         reconnections: int = 32,
+        messages_pool_maxzise: int = 128,
+        propagate: bool = False,
     ) -> None:
         """
         Represent a ChaskiNode, which handles various network operations and manages connections.
@@ -361,6 +407,8 @@ class ChaskiNode:
             Flag to indicate whether this node is the root in the network topology. Defaults to `False`.
         reconnections : int, optional
             The number of reconnection attempts to make if a node loses connection. Defaults to `32`.
+        messages_pool_maxzise : int, optional
+            The maximum size allowed for the message pool, determining how many messages can be stored in the pool before it starts removing the oldest ones. Defaults to `128`.
 
         Notes
         -----
@@ -389,6 +437,7 @@ class ChaskiNode:
         self.name = f"{name}"
         self.root = root
         self.reconnections = reconnections
+        self.propagate = propagate
 
         # If root and no specific port is set, select one from favorite ports that is available
         if root and not self.port:
@@ -431,6 +480,9 @@ class ChaskiNode:
         # If the run flag is set to True, create and start the main event loop task for the node
         if run:
             asyncio.create_task(self.run())
+
+        # Initialize the pool for storing messages with a maximum size
+        self.messages_pool = MessagesPool(maxzise=messages_pool_maxzise)
 
     # ----------------------------------------------------------------------
     def __repr__(self) -> str:
@@ -477,7 +529,6 @@ class ChaskiNode:
             return self.serializer_(obj)
         except Exception as e:
             raise Exception(f"Serialization error: {str(e)}")
-            # return str(e).encode()
 
     # ----------------------------------------------------------------------
     def deserializer(self, data: bytes) -> Any:
@@ -622,7 +673,8 @@ class ChaskiNode:
         # Log new connection
         logger_main.debug(f"{self.name}: New connection with {edge.address}.")
         asyncio.create_task(self._reader_loop(edge))
-        await self._handshake(edge, response=True)
+        await self.handshake(edge, response=True)
+        # await self.ping(edge)
         return True
 
     # ----------------------------------------------------------------------
@@ -788,9 +840,13 @@ class ChaskiNode:
             if port:
                 edge = self.get_edge(edge, port)
 
-            # Check if the edge has missing ip, port, or name attributes
-            if not bool(edge.ip and edge.port and edge.name):
-                self.name
+            # Initiate a handshake process with the specified edge to ensure proper connectivity update.
+            # This line is crucial because it updates the edge connection on the other node's end before closing it.
+            # By doing this, we ensure that any ongoing data transfer or network communication with the edge is properly
+            # accounted for and that the connection closure does not interrupt important activities. This practice helps
+            # in maintaining network stability, reduces the risk of leaving connections in a half-open state, and provides
+            # an opportunity to gather latency metrics which can be useful for debugging or optimizing network performance.
+            await self.handshake(edge, response=True)
 
             # Verify that provided edge instance is valid
             if not isinstance(edge, Edge):
@@ -961,6 +1017,10 @@ class ChaskiNode:
                     # Read exactly the specified length of data from the edge reader
                     await edge.reader.readexactly(length_data)
 
+                # Propagate the received message to other nodes or peers.
+                if self.propagate:
+                    await self.propagate(message, edge)
+
         except ConnectionResetError as e:
             logger_main.debug(
                 f"{self.name}: Connection reset by peer at {edge.address}: {str(e)}."
@@ -1042,6 +1102,7 @@ class ChaskiNode:
         """
 
         edge.paired = True
+        # await self._handshake(edge, response=True, delay=0.1, back_delay=1)
 
         async with self.lock_pair:
             subscription = message.data["paired"]
@@ -1122,40 +1183,110 @@ class ChaskiNode:
             The stream writer to which the message should be sent. If None, the message will be sent to all server pairs. Defaults to None.
         """
         message = Message(
-            command=command, topic=topic, data=data, timestamp=datetime.now()
+            command=command,
+            topic=topic,
+            data=data,
+            timestamp=datetime.now(),
+            ttl=self.ttl,
+            uuid=self.uuid(),
         )
-        data = self.serializer(message)
-        topic = self.serializer(topic)
+        # Serialize the Message instance into a bytes object for transmission
+        data = self.serialize_message(message)
 
+        # Call the _write_data method to send the serialized message data to the specified edge(s).
+        await self._write_data(data, edges=[edge])
+
+    # ----------------------------------------------------------------------
+    def serialize_message(self, message: Message) -> bytes:
+        """
+        Serialize a Message instance into a bytes object.
+
+        This method takes a Message instance and converts it into a bytes object
+        that can be transmitted over the network. It first serializes the message
+        and its topic, and then prepends the lengths of these serialized components
+        in bytes for proper framing.
+
+        Parameters
+        ----------
+        message : Message
+            The message object to be serialized. It contains the command, topic,
+            data, timestamp, TTL, and UUID associated with the message.
+
+        Returns
+        -------
+        bytes
+            A bytes object that represents the serialized message. The format
+            ensures both the message and its topic can be accurately reconstructed
+            on the receiving end.
+        """
+        # Serialize the Message instance and the topic string before sending over the network.
+        data = self.serializer(message)
+        topic = self.serializer(message.topic)
+
+        # Convert the lengths of the data and topic to 4-byte representations.
         length = len(data).to_bytes(4, byteorder="big")
         length_topic = len(topic).to_bytes(4, byteorder="big")
-        data = length + length_topic + topic + data
 
-        if edge is None:
-            for server_edge in self.edges:
-                # Ensure the server edge is not closing before writing data
-                if not server_edge.writer.is_closing():
-                    server_edge.writer.write(data)
-                    try:
-                        # Ensure the write buffer is flushed
-                        await server_edge.writer.drain()
-                    except ConnectionResetError:
-                        logger_main.warning(
-                            f"{self.name}: Connection lost while writing to {server_edge.address}."
-                        )
-                        await self.try_to_reconnect(server_edge)
-                        # await self.close_connection(server_edge)
-        else:
-            # Handling write operation with proper error management
-            edge.writer.write(data)
-            try:
-                # Ensure the write buffer is flushed
-                await edge.writer.drain()
-            except ConnectionResetError:
-                logger_main.warning(
-                    f"{self.name}: Connection lost while attempting to write to {edge.writer.get_extra_info('peername')}."
-                )
-                await self._remove_closing_connection()
+        # Concatenate lengths and serialized data to form the final message frame
+        data = length + length_topic + topic + data
+        return data
+
+    # ----------------------------------------------------------------------
+    async def _write_data(
+        self,
+        data: bytes,
+        edges: Optional[List[Edge]] = None,
+        excluded_edges: List[Edge] = [],
+    ) -> None:
+        """
+        Send serialized data to specified edges or all connected edges, excluding optional edges.
+
+        This method writes serialized data to the provided list of edges or all connected edges.
+        It ensures that data is only sent to edges that are not closing their connections and
+        have not been explicitly excluded.
+
+        Parameters
+        ----------
+        data : bytes
+            The serialized data to be sent to the edges.
+        edges : Optional[List[Edge]], optional
+            A list of Edge instances to which the data should be sent. If None, the data is sent to all edges.
+            Defaults to None.
+        excluded_edges : List[Edge], optional
+            A list of Edge instances to exclude from data transmission. Defaults to an empty list.
+
+        Raises
+        ------
+        ConnectionResetError
+            If an edge connection is lost while writing data, an attempt to reconnect is made.
+        """
+        # If no specific edges are provided, default to all connected edges
+        if (edges is None) or (edges == [None]):
+            edges = self.edges
+
+        for edge in edges:
+
+            # Skip edges that are in the excluded_edges list
+            if edge in excluded_edges:
+                continue
+
+            # Ensure the server edge is not closing before writing data
+            if not edge.writer.is_closing():
+                edge.writer.write(data)
+                try:
+                    # Ensure the write buffer is flushed
+                    await edge.writer.drain()
+                except ConnectionResetError:
+                    logger_main.warning(
+                        f"{self.name}: Connection lost while writing to {edge.address}."
+                    )
+                    # Attempt to reconnect with the edge if the connection was lost.
+                    # Attempt to reconnect only if the connection is not closing or closed.
+                    if not edge.writer.is_closing():
+                        await self.try_to_reconnect(edge)
+                    # Remove the connection from the edges list if it is closing or closed.
+                    elif edge.writer.is_closing():
+                        await self._remove_closing_connection()
 
     # ----------------------------------------------------------------------
     async def ping(
@@ -1193,7 +1324,6 @@ class ChaskiNode:
         self,
         server_edge: Edge,
         delay: float = 0,
-        response: bool = False,
         latency_update: bool = True,
         size: int = 0,
     ) -> None:
@@ -1208,22 +1338,19 @@ class ChaskiNode:
             The edge (network connection) to ping. If provided, the ping will be sent only to this edge. If None, pings will be sent to all server_pairs.
         delay : float, optional
             The delay in seconds before sending the ping message. Defaults to 0 seconds.
-        response : bool, optional
-            If True, the method sends a pong response immediately after receiving a ping request. Defaults to False.
         latency_update : bool, optional
             If True, the latency information for the edge will be updated based on the ping response. Defaults to True.
         size : int, optional
             The size of the dummy payload data in bytes to be included in the ping message. Defaults to 0 bytes, meaning no additional data is sent.
         """
         await asyncio.sleep(delay)
-        id_ = self._gen_id()
+        id_ = self.uuid()
         self.ping_events[id_] = server_edge
 
         await self._write(
             command='ping',
             data={
                 "ping_id": id_,
-                'response': response,
                 'latency_update': latency_update,
                 'dummy_data': os.urandom(size),
                 'size': size,
@@ -1258,19 +1385,10 @@ class ChaskiNode:
             "port": self.port,
             "subscriptions": self.subscriptions,
             "ping_id": message.data["ping_id"],
-            "response": message.data["response"],
             "latency_update": message.data["latency_update"],
             "dummy_data": message.data["dummy_data"],
         }
 
-        if message.data["response"]:
-            # Sending ping if response required
-            await self._ping(
-                edge,
-                delay=0.1,
-                latency_update=message.data["latency_update"],
-                size=message.data["size"],
-            )
         await self._write(command="pong", data=data, edge=edge)
 
     # ----------------------------------------------------------------------
@@ -1311,8 +1429,8 @@ class ChaskiNode:
         await asyncio.sleep(0)
 
     # ----------------------------------------------------------------------
-    async def _handshake(
-        self, server_edge: Edge, delay: float = 0, response: bool = False
+    async def handshake(
+        self, server_edge: Edge, delay: float = 0, back_delay=0, response: bool = False
     ):
         """
         Initiate or respond to a handshake with the given edge.
@@ -1326,12 +1444,13 @@ class ChaskiNode:
             The edge instance to which the handshake message is to be sent.
         delay : float, optional
             The amount of time (in seconds) to wait before sending the handshake message.
+        back_delay : TODO
         response : bool, optional
             Indicates whether a response is expected. Set to True if waiting for a handshake back.
         """
         await asyncio.sleep(delay)
 
-        id_ = self._gen_id()
+        id_ = self.uuid()
         self.handshake_events[id_] = server_edge
 
         await self._write(
@@ -1339,6 +1458,7 @@ class ChaskiNode:
             data={
                 "handshake_id": id_,
                 'response': response,
+                'back_delay': back_delay,
             },
             edge=server_edge,
         )
@@ -1372,7 +1492,7 @@ class ChaskiNode:
 
         # Check if a handshake response is expected.
         if message.data["response"]:
-            await self._handshake(edge, delay=0.1)
+            await self.handshake(edge, delay=message.data["back_delay"])
 
         # Respond with handshake acknowledgement
         await self._write(command="handshake_back", data=data, edge=edge)
@@ -1445,7 +1565,7 @@ class ChaskiNode:
             message.data["origin_port"],
         )
 
-        # Check if the node is already paired
+        # Check if the original node is already paired
         if status.data["paired"][subscription]:
             logger_main.debug(
                 f"{self.name}: Node is already paired with another branch."
@@ -1507,9 +1627,13 @@ class ChaskiNode:
         connections on the server and ensures that operations are not attempted on
         closed connections.
         """
+
+        n = len(self.edges)
         async with self.lock:
             self.edges = [edge for edge in self.edges if not edge.writer.is_closing()]
-        logger_main.debug(f"{self.name}: Removed a closing connection.")
+        logger_main.debug(
+            f"{self.name}: Removed a closing connection, {n - len(self.edges)} total edges disconnected."
+        )
 
     # ----------------------------------------------------------------------
     async def _start_udp_server(self) -> None:
@@ -1640,7 +1764,7 @@ class ChaskiNode:
             such as whether it is paired and actively serving.
         """
         # Generate a unique identifier for the ping event
-        id_ = self._gen_id()
+        id_ = self.uuid()
 
         # Store an asyncio event for the current request-response pairing
         self.request_response_multiplexer_events[id_] = asyncio.Event()
@@ -1663,25 +1787,36 @@ class ChaskiNode:
         return status
 
     # ----------------------------------------------------------------------
-    def _gen_id(self, size: int = 32) -> str:
+    def uuid(self) -> str:
         """
-        Generate a unique identifier string.
+        Generate a unique identifier for the node.
 
-        This method produces a random string composed of ASCII letters. It is used where a unique ID is required,
-        such as in identifying messages in a network protocol. The default length of the generated identifier is 32
-        characters, but it can be customized by specifying a different size.
-
-        Parameters
-        ----------
-        size : int, optional
-            The number of characters in the generated identifier. The default size is 32 characters.
+        This method generates and returns a universally unique identifier (UUID)
+        as a string. The UUID is used to uniquely identify objects and events
+        within the network communication context, ensuring that each identifier
+        is distinct across the distributed node system.
 
         Returns
         -------
         str
-            A randomly generated identifier string of length `size`.
+            A string representation of a UUID, which can be used to uniquely identify
+            an object, event, or message within the node network.
+
+        Notes
+        -----
+        The UUID generation is based on Python's `uuid` module, which provides
+        a way to create universally unique identifiers compliant with RFC 4122.
+
+        See Also
+        --------
+        uuid.uuid4 : Generates a random UUID.
+
+        References
+        ----------
+        .. [1] UUID documentation in Python library:
+               https://docs.python.org/3/library/uuid.html
         """
-        return "".join([random.choice(ascii_letters) for _ in range(size)])
+        return str(uuid.uuid4())
 
     # ----------------------------------------------------------------------
     async def _keep_alive(self, interval: int = 7) -> None:
@@ -1766,6 +1901,7 @@ class ChaskiNode:
                               reconnect to a peer (`True`) or not (`False`).
         """
         return {
+            "name": self.name,
             # Get the status of paired events for each subscription
             "paired": {
                 sub: self.paired_event[sub].is_set() for sub in self.subscriptions
@@ -1954,7 +2090,7 @@ class ChaskiNode:
         It helps in sending requests and receiving responses asynchronously over UDP.
         """
         # Generates a unique identifier and assigns it to id_.
-        id_ = self._gen_id()
+        id_ = self.uuid()
 
         # Prepare the data for the UDP request, including a unique request ID, the callback function to invoke, and any additional arguments.
         data_ = {"id": id_}
@@ -2071,3 +2207,17 @@ class ChaskiNode:
         """
         await asyncio.sleep(0)
         return echo_data
+
+    # ----------------------------------------------------------------------
+    async def propagate(self, message: Message, source_edge: Edge):
+        """"""
+
+        message.decrement_ttl()
+
+        if message.ttl <= 0:
+            return
+
+        self.messages_pool.append(message.uuid)
+
+        data = self.serialize_message(message)
+        await self._write_data(data, excluded_edges=[source_edge])
