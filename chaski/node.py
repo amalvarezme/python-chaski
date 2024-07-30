@@ -10,7 +10,7 @@ discovery and pairing of nodes based on shared subscriptions.
 
 Classes
 =======
-
+    - *MessagesPool*: Manages a collection of messages with a fixed maximum size, ensuring thread safety.
     - *Edge*: Represents a connection to a peer in the network, managing the input/output streams and storing
       metadata such as latency, jitter, and subscription topics.
     - *Message*: A container class for messages, packing together the command, data, and timestamp information.
@@ -51,28 +51,76 @@ FAVORITE_PORTS = [
 
 ########################################################################
 class MessagesPool:
-    """"""
+    """
+    A pool for managing a collection of messages with a fixed maximum size.
+
+    The `MessagesPool` class is designed to provide a thread-safe environment for storing,
+    retrieving, and managing messages in a fixed-size list. When the pool exceeds its
+    maximum size, the oldest message is removed to accommodate new ones.
+    """
 
     # ----------------------------------------------------------------------
-    def __init__(self, maxzise=128):
-        """Constructor"""
+    def __init__(self, maxzise: int = 128):
+        """
+        Initialize a new MessagesPool instance.
+
+        Parameters
+        ----------
+        maxzise : int, optional
+            The maximum size of the message pool. If the pool exceeds this size,
+            the oldest messages will be removed to make room for new ones. The default
+            maximum size is 128.
+        """
         self.pool = []
         self.maxzise = maxzise
+        self.lock = asyncio.Lock()
 
     # ----------------------------------------------------------------------
-    def append(self, item):
-        """"""
-        if item in self.pool:
-            self.pool.remove(item)
-        else:
-            if len(self.pool) > self.maxzise:
-                self.pool.pop(0)
-        self.pool.append(item)
+    async def append(self, item: Any) -> None:
+        """
+        Append an item to the message pool.
+
+        This coroutine safely appends an item to the message pool, ensuring that the pool size
+        does not exceed the defined maximum size (`self.maxzise`). If the pool is full, the
+        oldest item in the pool is removed to make space for the new item. If the item already
+        exists in the pool, it is moved to the end of the pool.
+
+        Parameters
+        ----------
+        item : Any
+            The item to append to the message pool. This can be any object that is comparable
+            to the items stored in the pool.
+        """
+        async with self.lock:
+            if item in self.pool:
+                self.pool.remove(item)
+            else:
+                if len(self.pool) > self.maxzise:
+                    self.pool.pop(0)
+            self.pool.append(item)
 
     # ----------------------------------------------------------------------
-    def __contains__(self, item):
-        """"""
-        return item in self.pool
+    async def contains(self, item: Any) -> bool:
+        """
+        Check if the specified item is present in the message pool.
+
+        This coroutine acquires a lock to ensure thread safety while checking
+        the presence of an item in the pool. It returns `True` if the item
+        is found, otherwise `False`.
+
+        Parameters
+        ----------
+        item : Any
+            The item to check for presence in the pool. This can be any
+            object that is comparable to the items stored in the pool.
+
+        Returns
+        -------
+        bool
+            `True` if the item is present in the pool, `False` otherwise.
+        """
+        async with self.lock:
+            return item in self.pool
 
 
 ########################################################################
@@ -373,7 +421,7 @@ class ChaskiNode:
         max_connections: int = 5,
         reconnections: int = 32,
         messages_pool_maxzise: int = 128,
-        propagate: bool = False,
+        message_propagation: bool = False,
     ) -> None:
         """
         Represent a ChaskiNode, which handles various network operations and manages connections.
@@ -409,6 +457,11 @@ class ChaskiNode:
             The number of reconnection attempts to make if a node loses connection. Defaults to `32`.
         messages_pool_maxzise : int, optional
             The maximum size allowed for the message pool, determining how many messages can be stored in the pool before it starts removing the oldest ones. Defaults to `128`.
+        message_propagation: bool, optional
+            Flag to indicate whether the node should propagate received messages to other nodes.
+            If set to `True`, messages received by this node will be forwarded to other connected
+            nodes except for the edge it received the message from, helping in message dissemination
+            across the network. Defaults to False.
 
         Notes
         -----
@@ -437,7 +490,7 @@ class ChaskiNode:
         self.name = f"{name}"
         self.root = root
         self.reconnections = reconnections
-        self.propagate = propagate
+        self.message_propagation = message_propagation
 
         # If root and no specific port is set, select one from favorite ports that is available
         if root and not self.port:
@@ -461,6 +514,7 @@ class ChaskiNode:
         self.lock = asyncio.Lock()
         self.lock_pair = asyncio.Lock()
         self.lock_disconnect = asyncio.Lock()
+        self.lock_propagate = asyncio.Lock()
 
         # Initialize the node's connection and event tracking structures
         self.edges = []
@@ -483,6 +537,9 @@ class ChaskiNode:
 
         # Initialize the pool for storing messages with a maximum size
         self.messages_pool = MessagesPool(maxzise=messages_pool_maxzise)
+
+        # Initialize the list of commands that should be propagated to other nodes in the network.
+        self.propagation_command_list = []
 
     # ----------------------------------------------------------------------
     def __repr__(self) -> str:
@@ -676,6 +733,67 @@ class ChaskiNode:
         await self.handshake(edge, response=True)
         # await self.ping(edge)
         return True
+
+    # ----------------------------------------------------------------------
+    def enable_message_propagation(self) -> None:
+        """
+        Enable the message propagation feature for the node.
+
+        When this method is called, it sets the `propagate` attribute to `True`.
+        This allows the node to forward received messages to other connected nodes.
+        By enabling message propagation, the node helps in disseminating messages
+        across the network, except for the edge from which the message was received.
+        """
+        self.message_propagation = True
+
+    # ----------------------------------------------------------------------
+    def disable_message_propagation(self) -> None:
+        """
+        Disable the message propagation feature for the node.
+
+        This method turns off the node's ability to forward received messages
+        to other connected nodes. Once disabled, the node will stop relaying
+        messages but will continue to receive and process incoming messages.
+        """
+        self.message_propagation = False
+
+    # ----------------------------------------------------------------------
+    def add_propagation_command(self, command: str) -> None:
+        """
+        Add a command to the list of commands that should be propagated.
+
+        This method appends a given command to the internal list of commands
+        that are allowed to be propagated to other nodes. It ensures that each
+        command is unique within the list by converting it to a set and back to a list.
+
+        Parameters
+        ----------
+        command : str
+            The command to add to the propagation list. This command should be a string
+            representing a specific type of message that can be propagated to other nodes.
+        """
+        self.propagation_command_list.append(command)
+        self.propagation_command_list = list(set(self.propagation_command_list))
+
+    # ----------------------------------------------------------------------
+    def remove_propagation_command(self, command: str) -> None:
+        """
+        Remove a command from the list of commands that should be propagated.
+
+        This method removes a given command from the internal list of commands
+        that are allowed to be propagated to other nodes. It ensures that the
+        command is removed if it exists in the list. If the command does not
+        exist in the list, the method completes silently without any changes.
+
+        Parameters
+        ----------
+        command : str
+            The command to remove from the propagation list. This command should
+            be a string representing a specific type of message that was previously
+            added for propagation to other nodes.
+        """
+        if command in self.propagation_command_list:
+            self.propagation_command_list.remove(command)
 
     # ----------------------------------------------------------------------
     async def connect(
@@ -1012,14 +1130,30 @@ class ChaskiNode:
                     logger_main.debug(
                         f"{self.name}: Received a message of size {length_data} bytes."
                     )
-                    await self._loop_message(message, edge)
+
+                    # Check if the command in the message should be propagated
+                    if message.command in self.propagation_command_list:
+
+                        if (  # If the message propagation is enabled and the message hasn't been processed already, propagate the message.
+                            self.message_propagation
+                            and not await self.messages_pool.contains(message.uuid)
+                        ):
+                            # Propagate the received message if it meets the criteria and is not already in the message pool
+                            async with self.lock_propagate:
+                                await self._loop_message(message, edge)
+                                await self.propagate(message, edge)
+                    else:
+                        # Process the message based on its command using the appropriate handler function.
+                        await self._loop_message(message, edge)
+
                 else:
                     # Read exactly the specified length of data from the edge reader
                     await edge.reader.readexactly(length_data)
 
-                # Propagate the received message to other nodes or peers.
-                if self.propagate:
-                    await self.propagate(message, edge)
+                # # Propagate the received message to other nodes or peers.
+                # if self.enable_propagation:
+                #     async with self.lock_propagate:
+                #         await self.propagate(message, edge)
 
         except ConnectionResetError as e:
             logger_main.debug(
@@ -2209,15 +2343,41 @@ class ChaskiNode:
         return echo_data
 
     # ----------------------------------------------------------------------
-    async def propagate(self, message: Message, source_edge: Edge):
-        """"""
+    async def propagate(self, message: Message, source_edge: Edge) -> None:
+        """
+        Propagate a message to other connected edges, excluding the source edge.
 
+        This method is used to propagate messages received by a node to other connected
+        edges in the network, excluding the edge from which the message was received.
+        This helps in disseminating the message across the network while preventing
+        immediate looping of the message back to its origin.
+
+        Parameters
+        ----------
+        message : Message
+            The message to be propagated. This contains the command, topic, data,
+            timestamp, TTL, and UUID of the message.
+        source_edge : Edge
+            The edge from which the message was originally received. This edge will
+            be excluded from the propagation to prevent looping.
+
+        Notes
+        -----
+        - The message's TTL (Time-to-Live) will be decremented by one. If the TTL
+          reaches zero or less, the message will not be propagated further.
+        - The message's UUID will be appended to the message pool to track its
+          propagation and avoid duplicate processing.
+        """
+        # Decrement the Time-to-Live (TTL) value of the message.
+        # If the TTL value reaches zero or less, the message will no longer be propagated.
         message.decrement_ttl()
-
         if message.ttl <= 0:
             return
 
-        self.messages_pool.append(message.uuid)
+        # Append the message's UUID to the pool to track it and avoid duplicate processing.
+        await self.messages_pool.append(message.uuid)
 
-        data = self.serialize_message(message)
-        await self._write_data(data, excluded_edges=[source_edge])
+        # Propagate the message to other edges, excluding the source edge to prevent immediate loops.
+        await self._write_data(
+            self.serialize_message(message), excluded_edges=[source_edge]
+        )
