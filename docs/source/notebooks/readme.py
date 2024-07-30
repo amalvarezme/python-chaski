@@ -62,9 +62,6 @@
 #
 # **Add Containers**:
 # Integrate containerization support (e.g., Docker) to facilitate the deployment and management of Chaski Confluent nodes in different environments.
-#
-# **Message Propagation**:
-# Develop and implement an efficient message propagation mechanism based on topics. This will ensure that messages are only sent to and processed by nodes that have subscribed to specific topics, reducing unnecessary network traffic and enhancing overall communication performance.
 
 # ## Main Features of Chaski Confluent
 #

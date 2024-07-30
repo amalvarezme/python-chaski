@@ -164,7 +164,7 @@ consumer.stop()
 # The use of callbacks for file reception events ensures that custom actions can be performed
 # upon successful receipt of each file.
 #
-# There are two main parameters for this feature: `destiny_folder`, which specifies
+# There are two main parameters for this feature: `destination_folder`, which specifies
 # the folder where incoming files will be stored, and `chunk_size`, which defines
 # the size of data chunks for file transfer.
 #
@@ -174,8 +174,8 @@ consumer = ChaskiStreamer(
     port=65432,
     name='Consumer',
     subscriptions=['topic1'],
-    enable_incoming_files=True,
-    destiny_folder='dir',
+    allow_incoming_files=True,
+    destination_folder='dir',
     chunk_size=1024,
 )
 consumer
@@ -185,8 +185,8 @@ producer = ChaskiStreamer(
     port=65433,
     name='Producer',
     subscriptions=['topic1'],
-    enable_incoming_files=True,
-    destiny_folder='dir',
+    allow_incoming_files=True,
+    destination_folder='dir',
     chunk_size=1024,
 )
 producer
@@ -216,16 +216,15 @@ with open('test_file_02.pdf', 'rb') as file:
 
 
 # %%
-def new_file_event(name, path, hash):
-    print(f'{name=}')
-    print(f'{path=}')
-    print(f'{hash=}')
+def new_file_event(**kwargs):
+    for key in kwargs:
+        print(f"{k}: {kwargs[key]}")
     
 
 consumer = ChaskiStreamer(
     ...
     
-    enable_incoming_files=True,
-    destiny_folder='dir',
-    file_input_callback=new_file_event,
+    allow_incoming_files=True,
+    destination_folder='dir',
+    file_handling_callback=new_file_event,
 )

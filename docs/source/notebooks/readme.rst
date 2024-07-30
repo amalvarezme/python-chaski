@@ -69,11 +69,6 @@ understand how to integrate and utilize the framework effectively.
 facilitate the deployment and management of Chaski Confluent nodes in
 different environments.
 
-**Add ‘Attach Function’ Feature to ChaskiRemote**: Enhance the
-ChaskiRemote class by adding a feature that allows functions to be
-dynamically attached and executed remotely. This will increase the
-flexibility and usability of remote method invocation.
-
 Main Features of Chaski Confluent
 ---------------------------------
 

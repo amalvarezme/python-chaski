@@ -2,7 +2,7 @@
 [Andrés Marino Álvarez Meza, PhD.](https://github.com/amalvarezme)  
 César Germán Castellanos Dominguez, PhD.  
 > _Digital Signal Processing and Control Group_  | _Grupo de Control y Procesamiento Digital de Señales ([GCPDS](https://github.com/UN-GCPDS/))_  
-> _Universidad Nacional de Colombia sede Manizales_
+> _Universidad Nacional de Colombia sede Manizales_  
 
 ----
 
@@ -47,9 +47,6 @@ Provide detailed examples demonstrating the use of Chaski Confluent in various s
 
 **Add Containers**:
 Integrate containerization support (e.g., Docker) to facilitate the deployment and management of Chaski Confluent nodes in different environments.
-
-**Add 'Attach Function' Feature to ChaskiRemote**:
-Enhance the ChaskiRemote class by adding a feature that allows functions to be dynamically attached and executed remotely. This will increase the flexibility and usability of remote method invocation.
 
 ## Main Features of Chaski Confluent
 
