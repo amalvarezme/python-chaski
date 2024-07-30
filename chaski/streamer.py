@@ -68,6 +68,9 @@ class ChaskiStreamer(ChaskiNode):
         self.file_handling_callback = file_handling_callback
         self.allow_incoming_files = allow_incoming_files
 
+        self.enable_message_propagation()
+        self.add_propagation_command('ChaskiMessage')
+
     # ----------------------------------------------------------------------
     def __repr__(self):
         """
