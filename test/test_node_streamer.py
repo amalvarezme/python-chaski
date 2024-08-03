@@ -46,16 +46,19 @@ class TestStreamer(unittest.IsolatedAsyncioTestCase):
             port=8511,
             name='Producer',
             subscriptions=['topic1'],
+            reconnections=None,
         )
 
         consumer = ChaskiStreamer(
             port=8512,
             name='Consumer',
             subscriptions=['topic1'],
+            reconnections=None,
         )
 
         await asyncio.sleep(0.3)
-        await producer.connect(consumer.address)
+        # await producer.connect(consumer.address)
+        await consumer.connect(producer.address)
 
         await asyncio.sleep(0.3)
         await producer.push(
@@ -127,6 +130,7 @@ class TestStreamer(unittest.IsolatedAsyncioTestCase):
             port=8513,
             name='Producer',
             subscriptions=['topicF'],
+            reconnections=None,
             #
             # File transfer
             allow_incoming_files=True,
@@ -138,6 +142,7 @@ class TestStreamer(unittest.IsolatedAsyncioTestCase):
             port=8514,
             name='Consumer',
             subscriptions=['topicF'],
+            reconnections=None,
             #
             # File transfer
             allow_incoming_files=True,
@@ -198,6 +203,7 @@ class TestStreamer(unittest.IsolatedAsyncioTestCase):
             port=8515,
             name='Producer',
             subscriptions=['topicF'],
+            reconnections=None,
             #
             # File transfer
             allow_incoming_files=True,
@@ -208,6 +214,7 @@ class TestStreamer(unittest.IsolatedAsyncioTestCase):
             port=8516,
             name='Consumer',
             subscriptions=['topicF'],
+            reconnections=None,
             #
             # File transfer
             allow_incoming_files=False,
@@ -234,6 +241,186 @@ class TestStreamer(unittest.IsolatedAsyncioTestCase):
         await asyncio.sleep(1)
         await consumer.stop()
         await producer.stop()
+
+    # ----------------------------------------------------------------------
+    async def test_stream_chain(self) -> None:
+        """
+        Test chaining of multiple ChaskiStreamer instances end-to-end.
+
+        This test method covers the following operations:
+        1. Initialize multiple producer nodes with the same subscription topic.
+        2. Chain them by connecting each producer to the next sequential producer.
+        3. Push messages from the initial producer and validate the received data at the final consumer in the chain.
+
+        The test ensures that the data propagates correctly through the chain of producers.
+
+        Raises
+        ------
+        AssertionError
+            If the received data at the final consumer does not match the expected values.
+        """
+        chain0 = ChaskiStreamer(
+            port=65432,
+            name='Producer',
+            subscriptions=['topic1'],
+            reconnections=None,
+        )
+
+        chain1 = ChaskiStreamer(
+            port=65433,
+            name='Producer',
+            subscriptions=['topic1'],
+            reconnections=None,
+        )
+
+        chain2 = ChaskiStreamer(
+            port=65434,
+            name='Producer',
+            subscriptions=['topic1'],
+            reconnections=None,
+        )
+
+        chain3 = ChaskiStreamer(
+            port=65435,
+            name='Producer',
+            subscriptions=['topic1'],
+            reconnections=None,
+        )
+
+        chain4 = ChaskiStreamer(
+            port=65436,
+            name='Producer',
+            subscriptions=['topic1'],
+            reconnections=None,
+        )
+
+        chain5 = ChaskiStreamer(
+            port=65437,
+            name='Producer',
+            subscriptions=['topic1'],
+            reconnections=None,
+        )
+
+        await asyncio.sleep(0.3)
+        await chain0.connect(chain1.address)
+        await chain1.connect(chain2.address)
+        await chain2.connect(chain3.address)
+        await chain3.connect(chain4.address)
+        await chain4.connect(chain5.address)
+
+        await asyncio.sleep(0.3)
+        await chain0.push(
+            'topic1',
+            {
+                'data': 'test0',
+            },
+        )
+
+        count = 0
+        async with chain5 as message_queue:
+            async for incoming_message in message_queue:
+
+                self.assertEqual(f'test{count}', incoming_message.data['data'])
+
+                if count >= 5:
+                    chain5.terminate_stream()
+
+                count += 1
+                await chain0.push(
+                    'topic1',
+                    {
+                        'data': f'test{count}',
+                    },
+                )
+
+        await asyncio.sleep(1)
+        await chain0.stop()
+        await chain1.stop()
+        await chain2.stop()
+        await chain3.stop()
+        await chain4.stop()
+        await chain5.stop()
+        chain0 = ChaskiStreamer(
+            port=65432,
+            name='Producer',
+            subscriptions=['topic1'],
+            reconnections=None,
+        )
+
+        chain1 = ChaskiStreamer(
+            port=65433,
+            name='Producer',
+            subscriptions=['topic1'],
+            reconnections=None,
+        )
+
+        chain2 = ChaskiStreamer(
+            port=65434,
+            name='Producer',
+            subscriptions=['topic1'],
+            reconnections=None,
+        )
+
+        chain3 = ChaskiStreamer(
+            port=65435,
+            name='Producer',
+            subscriptions=['topic1'],
+            reconnections=None,
+        )
+
+        chain4 = ChaskiStreamer(
+            port=65436,
+            name='Producer',
+            subscriptions=['topic1'],
+            reconnections=None,
+        )
+
+        chain5 = ChaskiStreamer(
+            port=65437,
+            name='Producer',
+            subscriptions=['topic1'],
+            reconnections=None,
+        )
+
+        await asyncio.sleep(0.3)
+        await chain0.connect(chain1.address)
+        await chain1.connect(chain2.address)
+        await chain2.connect(chain3.address)
+        await chain3.connect(chain4.address)
+        await chain4.connect(chain5.address)
+
+        await asyncio.sleep(0.3)
+        await chain0.push(
+            'topic1',
+            {
+                'data': 'test0',
+            },
+        )
+
+        count = 0
+        async with chain5 as message_queue:
+            async for incoming_message in message_queue:
+
+                self.assertEqual(f'test{count}', incoming_message.data['data'])
+
+                if count >= 5:
+                    chain5.terminate_stream()
+
+                count += 1
+                await chain0.push(
+                    'topic1',
+                    {
+                        'data': f'test{count}',
+                    },
+                )
+
+        await asyncio.sleep(1)
+        await chain0.stop()
+        await chain1.stop()
+        await chain2.stop()
+        await chain3.stop()
+        await chain4.stop()
+        await chain5.stop()
 
 
 if __name__ == '__main__':

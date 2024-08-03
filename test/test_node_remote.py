@@ -18,6 +18,11 @@ import asyncio
 from chaski.remote import ChaskiRemote
 
 
+import logging
+
+logging.basicConfig(level=logging.DEBUG)
+
+
 ########################################################################
 class TestRemote(unittest.IsolatedAsyncioTestCase):
     """
@@ -48,10 +53,17 @@ class TestRemote(unittest.IsolatedAsyncioTestCase):
             If the client manages to access the module's attributes or
             if the connection steps fail.
         """
-        server = ChaskiRemote(port=65432, available=[])
+        server = ChaskiRemote(
+            port=65432,
+            available=[],
+            reconnections=None,
+        )
         await asyncio.sleep(0.3)
 
-        client = ChaskiRemote(port=65433)
+        client = ChaskiRemote(
+            port=65433,
+            reconnections=None,
+        )
         await client.connect(server.address)
         await asyncio.sleep(0.3)
 
@@ -85,10 +97,17 @@ class TestRemote(unittest.IsolatedAsyncioTestCase):
             If the proxied 'os' module's method call results do not match the expected values, or
             if any exceptions are encountered during the test steps.
         """
-        server = ChaskiRemote(port=65434, available=['os'])
+        server = ChaskiRemote(
+            port=65434,
+            available=['os'],
+            reconnections=None,
+        )
         await asyncio.sleep(0.3)
 
-        client = ChaskiRemote(port=65435)
+        client = ChaskiRemote(
+            port=65435,
+            reconnections=None,
+        )
         await client.connect(server.address)
         await asyncio.sleep(0.3)
 
