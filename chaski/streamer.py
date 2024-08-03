@@ -67,6 +67,7 @@ class ChaskiStreamer(ChaskiNode):
         self.destination_folder = destination_folder
         self.file_handling_callback = file_handling_callback
         self.allow_incoming_files = allow_incoming_files
+        self.terminate_stream_flag = False
 
         self.enable_message_propagation()
         self.add_propagation_command('ChaskiMessage')
@@ -302,8 +303,22 @@ class ChaskiStreamer(ChaskiNode):
         """
         while True:
             message = await self.message_queue.get()
+            if self.terminate_stream_flag:
+                break
             yield message
         self.stop()
+        self.terminate_stream_flag = True
+
+    # ----------------------------------------------------------------------
+    def terminate_stream(self) -> None:
+        """
+        Terminate the message streaming process.
+
+        This method sets the `terminate_stream_flag` to `True`, signaling the
+        `message_stream` coroutine to stop generating further messages. This
+        is typically used to gracefully shut down the message streaming process.
+        """
+        self.terminate_stream_flag = True
 
     # ----------------------------------------------------------------------
     async def push_file(
