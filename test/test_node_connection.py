@@ -1,6 +1,6 @@
 """
 ===========================
-chaski_test_node_connection
+Chaski Test Node Connection
 ===========================
 
 This module provides test cases for verifying the connection-related
