@@ -17,7 +17,9 @@ PORT = 65432
 
 
 # ----------------------------------------------------------------------
-async def create_nodes(subscriptions: Union[int, List[str]], ip: str = '127.0.0.1', port: int = PORT) -> List[ChaskiNode]:
+async def create_nodes(
+    subscriptions: Union[int, List[str]], ip: str = '127.0.0.1', port: int = PORT
+) -> List[ChaskiNode]:
     """
     Create a list of ChaskiNode instances.
 
@@ -44,17 +46,58 @@ async def create_nodes(subscriptions: Union[int, List[str]], ip: str = '127.0.0.
     if isinstance(subscriptions, int):
         subscriptions = list(ascii_uppercase)[:subscriptions]
 
-    nodes = [ChaskiNode(
-        ip=ip,
-        port=port + i,
-        name=f'Node{i}',
-        subscriptions=sub,
-        run=True,
-        ttl=15,
-        root=(i == 0),
-        reconnections=None,
-    ) for i, sub in enumerate(subscriptions)]
+    nodes = [
+        ChaskiNode(
+            ip=ip,
+            port=port + i,
+            name=f'Node{i}',
+            subscriptions=sub,
+            run=True,
+            ttl=15,
+            root=(i == 0),
+            reconnections=None,
+        )
+        for i, sub in enumerate(subscriptions)
+    ]
     port += len(subscriptions) + 1
 
     await asyncio.sleep(0.5)
     return nodes
+
+
+# ----------------------------------------------------------------------
+async def run_transmission(producer, consumer, parent=None):
+    """"""
+    await asyncio.sleep(0.3)
+    # await producer.connect(consumer.address)
+    await consumer.connect(producer.address)
+
+    await asyncio.sleep(0.3)
+    await producer.push(
+        'topic1',
+        {
+            'data': 'test0',
+        },
+    )
+
+    count = 0
+    async with consumer as message_queue:
+        async for incoming_message in message_queue:
+
+            if parent:
+                parent.assertEqual(f'test{count}', incoming_message.data['data'])
+
+            if count >= 5:
+                return
+
+            count += 1
+            await producer.push(
+                'topic1',
+                {
+                    'data': f'test{count}',
+                },
+            )
+
+    await asyncio.sleep(1)
+    await consumer.stop()
+    await producer.stop()

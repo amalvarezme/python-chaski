@@ -13,6 +13,7 @@ import unittest
 import asyncio
 import os
 from chaski.streamer import ChaskiStreamer
+from chaski.utils.auto import run_transmission
 
 
 ########################################################################
@@ -56,38 +57,7 @@ class TestStreamer(unittest.IsolatedAsyncioTestCase):
             reconnections=None,
         )
 
-        await asyncio.sleep(0.3)
-        # await producer.connect(consumer.address)
-        await consumer.connect(producer.address)
-
-        await asyncio.sleep(0.3)
-        await producer.push(
-            'topic1',
-            {
-                'data': 'test0',
-            },
-        )
-
-        count = 0
-        async with consumer as message_queue:
-            async for incoming_message in message_queue:
-
-                self.assertEqual(f'test{count}', incoming_message.data['data'])
-
-                if count >= 5:
-                    return
-
-                count += 1
-                await producer.push(
-                    'topic1',
-                    {
-                        'data': f'test{count}',
-                    },
-                )
-
-        await asyncio.sleep(1)
-        await consumer.stop()
-        await producer.stop()
+        await run_transmission(producer, consumer, parent=self)
 
     # ----------------------------------------------------------------------
     async def test_file_transfer(self) -> None:
