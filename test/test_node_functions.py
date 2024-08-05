@@ -15,10 +15,12 @@ TestFunctions : unittest.IsolatedAsyncioTestCase
     address verification, and message handling.
 """
 
-import unittest
+import ssl
 import asyncio
+import unittest
 from chaski.node import Message
-from chaski.utils.auto import create_nodes
+from chaski.streamer import ChaskiStreamer
+from chaski.utils.auto import run_transmission, create_nodes
 
 
 ########################################################################
@@ -95,7 +97,7 @@ class TestFunctions(unittest.IsolatedAsyncioTestCase):
         await self._close_nodes(nodes)
 
     # ----------------------------------------------------------------------
-    async def test_message(self):
+    async def test_message_ttl(self):
         """"""
         message = Message('command', ttl=10)
         message.decrement_ttl()
@@ -106,6 +108,39 @@ class TestFunctions(unittest.IsolatedAsyncioTestCase):
             8,
             "The TTL should be decremented by 2 from the initial value of 10",
         )
+
+    # ----------------------------------------------------------------------
+    async def test_ssl_certificate(self):
+        """"""
+        server_ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+        server_ssl_context.load_cert_chain(
+            certfile='ssl_certificates/certificate.pem',
+            keyfile='ssl_certificates/private_key.pem',
+        )
+
+        client_ssl_context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
+        client_ssl_context.check_hostname = False
+        client_ssl_context.verify_mode = ssl.CERT_NONE
+
+        producer = ChaskiStreamer(
+            port=8511,
+            name='Producer',
+            subscriptions=['topic1'],
+            reconnections=None,
+            server_ssl_context=server_ssl_context,
+            client_ssl_context=client_ssl_context,
+        )
+
+        consumer = ChaskiStreamer(
+            port=8512,
+            name='Consumer',
+            subscriptions=['topic1'],
+            reconnections=None,
+            server_ssl_context=server_ssl_context,
+            client_ssl_context=client_ssl_context,
+        )
+
+        await run_transmission(producer, consumer, parent=self)
 
 
 if __name__ == '__main__':
