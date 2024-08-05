@@ -116,6 +116,7 @@ autodoc_mock_imports = [
     "matplotlib",
     "seaborn",
     "networkx",
+    "cryptography",
 ]
 
 
