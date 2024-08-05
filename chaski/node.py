@@ -21,6 +21,7 @@ Classes
 
 import os
 import re
+import ssl
 import uuid
 import time
 import pickle
@@ -422,6 +423,8 @@ class ChaskiNode:
         reconnections: int = 32,
         messages_pool_maxzise: int = 128,
         message_propagation: bool = False,
+        ssl_context: Optional[ssl.SSLContext] = None,
+        ssl_certificate_attributes: Optional[dict] = {},
     ) -> None:
         """
         Represent a ChaskiNode, which handles various network operations and manages connections.
@@ -462,6 +465,14 @@ class ChaskiNode:
             If set to `True`, messages received by this node will be forwarded to other connected
             nodes except for the edge it received the message from, helping in message dissemination
             across the network. Defaults to False.
+        ssl_context: Optional[ssl.SSLContext], optional
+            An SSLContext to be used for secure communication over TLS/SSL. If provided,
+            the node will use this context for setting up SSL/TLS connections. Defaults to `None`.
+        ssl_certificate_attributes: dict, optional
+            A dictionary containing attributes to use when generating an SSL certificate,
+            such as 'Country Name', 'State or Province Name', 'Locality Name', and others.
+            These attributes provide metadata for the SSL certificate, ensuring that it is
+            correctly identified and validated within the network. Defaults to an empty dictionary.
 
         Notes
         -----
@@ -487,10 +498,12 @@ class ChaskiNode:
         self.server = None
         self.ttl = ttl
         self.max_connections = max_connections
-        self.name = f"{name}"
+        self.id = self.uuid()
+        self.name = f"{name}" if name else self.id
         self.root = root
         self.reconnections = reconnections
         self.message_propagation = message_propagation
+        self.ssl_context = ssl_context
 
         # If root and no specific port is set, select one from favorite ports that is available
         if root and not self.port:
@@ -531,15 +544,24 @@ class ChaskiNode:
             if root:
                 self.paired_event[subscription].set()
 
-        # If the run flag is set to True, create and start the main event loop task for the node
-        if run:
-            asyncio.create_task(self.run())
-
         # Initialize the pool for storing messages with a maximum size
         self.messages_pool = MessagesPool(maxzise=messages_pool_maxzise)
 
         # Initialize the list of commands that should be propagated to other nodes in the network.
         self.propagation_command_list = []
+
+        # Initialize SSL certificate attributes for secure communication
+        self.ssl_certificate_attributes = {
+            'Country Name': u"CO",
+            'Locality Name': u"Manizales",
+            'Organization Name': u"DunderLab",
+            'State or Province Name': u"Caldas",
+        }
+        self.ssl_certificate_attributes.update(ssl_certificate_attributes)
+
+        # If the run flag is set to True, create and start the main event loop task for the node
+        if run:
+            asyncio.create_task(self.run())
 
     # ----------------------------------------------------------------------
     def __repr__(self) -> str:
@@ -713,7 +735,7 @@ class ChaskiNode:
 
         # Establish a TCP connection to the peer node
         reader, writer = await asyncio.open_connection(
-            peer_ip, peer_port, family=family
+            peer_ip, peer_port, family=family, ssl=self.ssl_context
         )
         edge = Edge(writer=writer, reader=reader)
 
@@ -1281,6 +1303,7 @@ class ChaskiNode:
             self._connected,
             self.ip,
             self.port,
+            ssl=self.ssl_context,
             reuse_address=True,
             reuse_port=True,
         )
