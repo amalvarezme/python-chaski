@@ -28,11 +28,14 @@ import pickle
 import asyncio
 import logging
 import socket
+import ipaddress
 import traceback
 from datetime import datetime
 from functools import cached_property
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, List, Literal, Optional, Tuple, Union
+
+from chaski.utils.certificate_authority import CertificateAuthority
 
 # Initialize loggers for the main node operations, edge connections, and UDP protocol
 logger_main = logging.getLogger("ChaskiNode")
@@ -423,8 +426,10 @@ class ChaskiNode:
         reconnections: int = 32,
         messages_pool_maxzise: int = 128,
         message_propagation: bool = False,
-        ssl_context: Optional[ssl.SSLContext] = None,
+        ssl_context_client: Optional[ssl.SSLContext] = None,
+        ssl_context_server: Optional[ssl.SSLContext] = None,
         ssl_certificate_attributes: Optional[dict] = {},
+        ssl_certificates_location: Optional[str] = '.',
     ) -> None:
         """
         Represent a ChaskiNode, which handles various network operations and manages connections.
@@ -465,14 +470,17 @@ class ChaskiNode:
             If set to `True`, messages received by this node will be forwarded to other connected
             nodes except for the edge it received the message from, helping in message dissemination
             across the network. Defaults to False.
-        ssl_context: Optional[ssl.SSLContext], optional
-            An SSLContext to be used for secure communication over TLS/SSL. If provided,
-            the node will use this context for setting up SSL/TLS connections. Defaults to `None`.
+        ssl_context_client: Optional[ssl.SSLContext], optional
+        ssl_context_server: Optional[ssl.SSLContext], optional
         ssl_certificate_attributes: dict, optional
             A dictionary containing attributes to use when generating an SSL certificate,
             such as 'Country Name', 'State or Province Name', 'Locality Name', and others.
             These attributes provide metadata for the SSL certificate, ensuring that it is
             correctly identified and validated within the network. Defaults to an empty dictionary.
+        ssl_certificates_location : Optional[str] = '.',
+            Location of the directory where SSL/TLS certificates are stored.
+            This directory should include the necessary certificate files for establishing secure
+            connections using the configured SSL context. If not specified, defaults to the current directory ('.').
 
         Notes
         -----
@@ -503,7 +511,9 @@ class ChaskiNode:
         self.root = root
         self.reconnections = reconnections
         self.message_propagation = message_propagation
-        self.ssl_context = ssl_context
+        self.ssl_context_client = ssl_context_client
+        self.ssl_context_server = ssl_context_server
+        self.ssl_certificates_location = ssl_certificates_location
 
         # If root and no specific port is set, select one from favorite ports that is available
         if root and not self.port:
@@ -556,6 +566,7 @@ class ChaskiNode:
             'Locality Name': u"Manizales",
             'Organization Name': u"DunderLab",
             'State or Province Name': u"Caldas",
+            'Common Name': u"Chaski-Confluent",
         }
         self.ssl_certificate_attributes.update(ssl_certificate_attributes)
 
@@ -723,7 +734,7 @@ class ChaskiNode:
             (edge.ip, edge.port, edge.writer.is_closing()) for edge in self.edges
         ]:
             logger_main.warning(f"{self.name}: Already connected with this node.")
-            return False
+            return self.get_edge(peer_ip, peer_port)
 
         # Resolve address info for the specified ip and port
         addr_info = socket.getaddrinfo(
@@ -735,8 +746,12 @@ class ChaskiNode:
 
         # Establish a TCP connection to the peer node
         reader, writer = await asyncio.open_connection(
-            peer_ip, peer_port, family=family, ssl=self.ssl_context
+            peer_ip,
+            peer_port,
+            family=family,
+            ssl=self.ssl_context_client,
         )
+
         edge = Edge(writer=writer, reader=reader)
 
         # Check if the connection should be marked as paired
@@ -754,7 +769,7 @@ class ChaskiNode:
         asyncio.create_task(self._reader_loop(edge))
         await self.handshake(edge, response=True)
         # await self.ping(edge)
-        return True
+        return edge
 
     # ----------------------------------------------------------------------
     def enable_message_propagation(self) -> None:
@@ -859,7 +874,7 @@ class ChaskiNode:
             ipv4, ipv6, port = re.findall(pattern, address_or_ip_or_node)[0]
             ip = ipv4 + ipv6
 
-        await self._connect_to_peer(ip, port)
+        return await self._connect_to_peer(ip, port)
 
     # ----------------------------------------------------------------------
     async def discovery(
@@ -1303,9 +1318,11 @@ class ChaskiNode:
             self._connected,
             self.ip,
             self.port,
-            ssl=self.ssl_context,
+            ssl=self.ssl_context_server,
             reuse_address=True,
             reuse_port=True,
+            # reuse_address=False,
+            # reuse_port=False,
         )
 
         # Logging the server address and starting keep-alive task
@@ -1821,6 +1838,7 @@ class ChaskiNode:
         # Set socket options to allow address and port reuse
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+
         sock.bind((self.ip, self.port))
         transport, protocol = await loop.create_datagram_endpoint(
             lambda: UDPProtocol(self, self._process_udp_message), sock=sock
@@ -2318,7 +2336,7 @@ class ChaskiNode:
         # Execute the callback method specified in the request data and store its result in the response field.
         data['response'] = await getattr(self, data['callback'])(**data['kwargs'])
 
-        await self._write('response_udp', data)
+        await self._write('response_udp', data, edge)
 
     # ----------------------------------------------------------------------
     async def _test_generic_request_udp(self, echo_data: dict[str, Any] = {}) -> Any:
@@ -2404,3 +2422,93 @@ class ChaskiNode:
         await self._write_data(
             self.serialize_message(message), excluded_edges=[source_edge]
         )
+
+    # ----------------------------------------------------------------------
+    async def request_ssl_certificate(self, ca_address: str) -> None:
+        """
+        Request an SSL certificate from a Certificate Authority (CA).
+
+        This coroutine initiates a request for an SSL certificate from the specified
+        Certificate Authority (CA) address. It generates a Certificate Signing Request (CSR),
+        sends it to the CA, and waits for the CA to sign the CSR and return the signed certificate.
+        Additionally, it retrieves the CA's certificate and updates the node's SSL context.
+
+        Parameters
+        ----------
+        ca_address : str
+            The address of the Certificate Authority (CA) node to request the SSL certificate from.
+
+        Raises
+        ------
+        Exception
+            If there is an error during the SSL certificate request or signing process.
+
+        Notes
+        -----
+        The method performs the following steps:
+        1. Generates a CSR locally.
+        2. Establishes a connection with the CA node.
+        3. Sends the CSR to the CA for signing.
+        4. Receives the signed certificate and CA's certificate from the CA.
+        5. Writes the signed certificate and CA's certificate to disk.
+        6. Updates the SSL context of the node with the new certificate.
+        7. Closes the connection with the CA node.
+        """
+
+        pattern = r"(?:(?:\*?\w+@)?(\d{1,3}(?:\.\d{1,3}){3})|(?:\*?\w+@)?\[((?:[0-9a-fA-F]{1,4}:){1,7}[0-9a-fA-F]{1,4})\]):(\d+)"
+        ipv4, ipv6, port = re.findall(pattern, self.ip)[0]
+
+        if ipv4:
+            ip_address = ipaddress.IPv4Address(self.ip)
+        elif ipv6:
+            ip_address = ipaddress.IPv6Address(self.ip)
+
+        # Initialize the CertificateAuthority object to manage SSL certificates.
+        ca = CertificateAuthority(
+            self.id,
+            ip_address,
+            ssl_certificates_location=self.ssl_certificates_location,
+            ssl_certificate_attributes=self.ssl_certificate_attributes,
+        )
+        # Generate the keys and the Certificate Signing Request (CSR).
+        ca.generate_key_and_csr()
+
+        # Load the certificate from the specified certificate path
+        csr_data_client = ca.load_certificate(ca.certificate_paths['client'])
+        csr_data_server = ca.load_certificate(ca.certificate_paths['server'])
+
+        # Establish a connection with the Certificate Authority (CA) node to request SSL certification.
+        ca_edge = await self.connect(ca_address)
+
+        # Prepare the data for the Certificate Signing Request (CSR) including
+        # the CSR data and the node's unique identifier (node_id). Then,
+        # request the CA to sign the CSR using a generic UDP request.
+        data = {
+            'csr_data_client': csr_data_client,
+            'csr_data_server': csr_data_server,
+            'node_id': self.id,
+        }
+        data_response = await self._generic_request_udp(
+            callback='sign_csr',
+            kwargs=data,
+            edge=ca_edge,
+        )
+
+        signed_csr_client = data_response['signed_csr_client']
+        signed_csr_server = data_response['signed_csr_server']
+        ca_certificate_path = data_response['ca_certificate_path']
+
+        ca.ca_certificate_path = os.path.join(ca.ssl_certificates_location, 'ca.cert')
+        # Write the signed certificate and the CA's certificate to their respective paths.
+        ca.write_certificate(ca.certificate_signed_paths['client'], signed_csr_client)
+        ca.write_certificate(ca.certificate_signed_paths['server'], signed_csr_server)
+        ca.write_certificate(ca.ca_certificate_path, ca_certificate_path)
+
+        logger_main.debug(
+            f"{self.name}: SSL certificate request process completed successfully."
+        )
+        # Load a new SSL context with the generated root CA's certificate and signed certificate.
+        self.ssl_context_client, self.ssl_context_server = ca.get_context()
+
+        # Close the connection with the Certificate Authority (CA) node after obtaining the signed certificate.
+        await self.close_connection(ca_edge)
