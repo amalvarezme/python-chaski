@@ -100,7 +100,9 @@ remote objects as if they were local.
 **Security:** Implement robust security measures to protect data and
 ensure safe communication between the nodes. Features like encryption
 and authentication are essential to safeguarding the integrity of the
-network.
+network. For example, you can set up a Certificate Authority (CA) within
+your network to manage SSL certificates and ensure encrypted
+communication.
 
 **Flexible Configuration:** The framework offers a flexible
 configuration system, allowing users to customize various parameters
@@ -167,3 +169,17 @@ maintaining high throughput and scalability even under heavy network
 loads. The integration of ``asyncio`` thus provides a robust foundation
 for building dynamic and resilient distributed systems, ensuring
 seamless and efficient data exchange across nodes.
+
+Certification Authority
+-----------------------
+
+Certification Authority (CA) is crucial for securing communications
+within the Chaski-Confluent framework. By acting as a trust anchor, CA
+issues and manages digital certificates, ensuring that nodes in the
+network can verify each other’s identities. This mechanism helps to
+maintain the integrity and confidentiality of the data being exchanged.
+
+The CA in Chaski-Confluent can generate, sign, and distribute SSL
+certificates, providing a robust security layer. This ensures that all
+communication between nodes is encrypted and authenticated,
+significantly reducing the risk of data breaches or unauthorized access.

@@ -12,7 +12,7 @@
 #     name: python3
 # ---
 
-# %% nbsphinx="hidden"
+# %% nbsphinx="hidden" editable=true slideshow={"slide_type": ""}
 import sys
 import asyncio
 
