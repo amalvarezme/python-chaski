@@ -1,6 +1,7 @@
 import re
 import logging
 import ipaddress
+import asyncio
 
 from chaski.node import ChaskiNode
 from chaski.utils.certificate_authority import CertificateAuthority
@@ -23,10 +24,10 @@ class ChaskiCA(ChaskiNode):
         location, and SSL certificate attributes. The setup_certificate_authority method
         is invoked to ensure that the CA's private key and certificate are properly set up.
         """
-        super().__init__(*args, **kwargs)
+        super().__init__(reconnections=0, *args, **kwargs)
 
         pattern = r"(?:(?:\*?\w+@)?(\d{1,3}(?:\.\d{1,3}){3})|(?:\*?\w+@)?\[((?:[0-9a-fA-F]{1,4}:){1,7}[0-9a-fA-F]{1,4})\]):(\d+)"
-        ipv4, ipv6, port = re.findall(pattern, self.ip)[0]
+        ipv4, ipv6, port = re.findall(pattern, f"{self.ip}:{self.port}")[0]
 
         if ipv4:
             ip_address = ipaddress.IPv4Address(self.ip)
@@ -95,6 +96,9 @@ class ChaskiCA(ChaskiNode):
         signed_csr_client = self.ca.sign_csr(csr_data_client)
         signed_csr_server = self.ca.sign_csr(csr_data_server)
 
+        # Prepare the dictionary containing the signed certificates for client and server,
+        # and the path to the CA certificate. This dictionary will be returned as the result
+        # of the CSR signing process.
         data = {
             'signed_csr_client': signed_csr_client,
             'signed_csr_server': signed_csr_server,
