@@ -55,3 +55,4 @@ security = [
 
 [project.scripts]
 chaski_ca = "chaski.scripts.ca_server:main"
+chaski_close_ports = "chaski.scripts.close_ports:main"
