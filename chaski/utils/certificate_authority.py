@@ -54,11 +54,17 @@ class CertificateAuthority:
         IOError
             If there is an error reading or writing the key and certificate files.
         """
-        self.ca_key_path_ = os.path.join(self.ssl_certificates_location, "ca.key")
-        self.ca_cert_path_ = os.path.join(self.ssl_certificates_location, "ca.cert")
+        self.ca_key_path_ = os.path.join(
+            self.ssl_certificates_location, "ca.key"
+        )
+        self.ca_cert_path_ = os.path.join(
+            self.ssl_certificates_location, "ca.cert"
+        )
 
         # Generate CA key
-        ca_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        ca_key = rsa.generate_private_key(
+            public_exponent=65537, key_size=2048
+        )
 
         # Write CA key to file
         with open(self.ca_key_path_, "wb") as f:
@@ -79,7 +85,9 @@ class CertificateAuthority:
                 ),
                 x509.NameAttribute(
                     NameOID.STATE_OR_PROVINCE_NAME,
-                    self.ssl_certificate_attributes['State or Province Name'],
+                    self.ssl_certificate_attributes[
+                        'State or Province Name'
+                    ],
                 ),
                 x509.NameAttribute(
                     NameOID.LOCALITY_NAME,
@@ -95,6 +103,10 @@ class CertificateAuthority:
                 ),
             ]
         )
+        # Generate a CA (Certificate Authority) certificate using the given CA key.
+        # The certificate includes identifying information such as the subject name, issuer name,
+        # public key, serial number, and validity period. It also includes a BasicConstraints extension
+        # indicating the certificate is for a CA. Finally, it is signed using the CA's private key.
         ca_certificate = (
             x509.CertificateBuilder()
             .subject_name(subject)
@@ -103,7 +115,8 @@ class CertificateAuthority:
             .serial_number(x509.random_serial_number())
             .not_valid_before(datetime.datetime.utcnow())
             .not_valid_after(
-                datetime.datetime.utcnow() + datetime.timedelta(days=365 * 10)
+                datetime.datetime.utcnow()
+                + datetime.timedelta(days=365 * 10)
             )
             .add_extension(
                 x509.BasicConstraints(ca=True, path_length=None),
@@ -141,6 +154,18 @@ class CertificateAuthority:
             return self.ca_key_path_
         else:
             raise Exception("CA key path not set")
+
+    # ----------------------------------------------------------------------
+    @ca_private_key_path.setter
+    def ca_private_key_path(self, path: str) -> None:
+        """"""
+        self.ca_key_path_ = path
+
+    # ----------------------------------------------------------------------
+    def load_ca(self, ca_key_path, ca_cert_path):
+        """"""
+        self.ca_private_key_path = ca_key_path
+        self.ca_certificate_path = ca_cert_path
 
     # ----------------------------------------------------------------------
     @property
@@ -224,28 +249,66 @@ class CertificateAuthority:
         # Generate client certificate
         certificate = (
             x509.CertificateBuilder()
+            # Set the subject name for the certificate to the subject specified in the CSR (Certificate Signing Request)
             .subject_name(csr.subject)
+            # Set the issuer's name to the subject of the CA certificate, essentially making the CA the issuer of this certificate.
             .issuer_name(ca_certificate.subject)
+            # Add the public key from the Certificate Signing Request (CSR) to the certificate.
             .public_key(csr.public_key())
+            # Generate a random serial number for the certificate to ensure its uniqueness.
             .serial_number(x509.random_serial_number())
-            .not_valid_before(datetime.datetime.utcnow())
-            .not_valid_after(datetime.datetime.utcnow() + datetime.timedelta(days=365))
+            .not_valid_before(
+                datetime.datetime.utcnow()
+            )  # Set certificate's validity start time to current time
+            .not_valid_after(
+                datetime.datetime.utcnow()
+                + datetime.timedelta(
+                    days=365
+                )  # Set certificate's expiration time to one year from now
+            )
+            # Add an extension to specify that this certificate is not for a Certificate Authority (CA)
             .add_extension(
                 x509.BasicConstraints(ca=False, path_length=None),
                 critical=True,
             )
+            # Add the subject alternative name extension with the IP address
             .add_extension(
-                x509.SubjectAlternativeName([x509.IPAddress(self.ip_address)]),
+                x509.SubjectAlternativeName(
+                    [x509.IPAddress(self.ip_address)]
+                ),
                 critical=False,
             )
+            # Sign the certificate using the CA's private key with SHA256 as the hashing algorithm
             .sign(ca_key, hashes.SHA256())
         )
 
         return certificate.public_bytes(serialization.Encoding.PEM)
 
     # ----------------------------------------------------------------------
-    def _key_and_csr(self, name='client') -> None:
-        """"""
+    def _key_and_csr(self, name='client') -> tuple:
+        """
+        Generate a private key and Certificate Signing Request (CSR).
+
+        This method generates a private key and a corresponding CSR for the specified name
+        (either 'client' or 'server'). The private key and CSR are saved to files in the
+        designated SSL certificates location. The paths to the generated key and CSR files
+        are returned.
+
+        Parameters
+        ----------
+        name : str, optional
+            The name to use for generating the key and CSR filenames (default is 'client').
+
+        Returns
+        -------
+        tuple
+            A tuple containing the paths to the generated private key file and CSR file.
+
+        Raises
+        ------
+        IOError
+            If there is an error writing the private key or CSR files to the filesystem.
+        """
         private_key_path_ = os.path.join(
             self.ssl_certificates_location, f'{name}_{self.id}.key'
         )
@@ -278,7 +341,9 @@ class CertificateAuthority:
                         ),
                         x509.NameAttribute(
                             NameOID.STATE_OR_PROVINCE_NAME,
-                            self.ssl_certificate_attributes['State or Province Name'],
+                            self.ssl_certificate_attributes[
+                                'State or Province Name'
+                            ],
                         ),
                         x509.NameAttribute(
                             NameOID.LOCALITY_NAME,
@@ -286,7 +351,9 @@ class CertificateAuthority:
                         ),
                         x509.NameAttribute(
                             NameOID.ORGANIZATION_NAME,
-                            self.ssl_certificate_attributes['Organization Name'],
+                            self.ssl_certificate_attributes[
+                                'Organization Name'
+                            ],
                         ),
                         x509.NameAttribute(
                             NameOID.COMMON_NAME,
@@ -305,14 +372,65 @@ class CertificateAuthority:
         return private_key_path_, certificate_path_
 
     # ----------------------------------------------------------------------
-    def generate_key_and_csr(self):
-        """"""
+    def generate_key_and_csr(self) -> None:
+        """
+        Generate and store the private keys and Certificate Signing Requests (CSRs).
+
+        This method generates private keys and Certificate Signing Requests (CSRs) for both
+        'client' and 'server' entities. The generated keys and CSRs are saved to the filesystem
+        in the specified SSL certificates location, and their paths are stored in the instance
+        attributes.
+
+        Raises
+        ------
+        IOError
+            If there is an error writing the private key or CSR files to the filesystem.
+        """
         self.private_key_client_path_, self.certificate_client_path_ = (
             self._key_and_csr(name='client')
         )
         self.private_key_server_path_, self.certificate_server_path_ = (
             self._key_and_csr(name='server')
         )
+
+    # ----------------------------------------------------------------------
+    def load_key_and_csr(
+        self,
+        private_key_client_path: str,
+        certificate_client_path: str,
+        private_key_server_path: str,
+        certificate_server_path: str,
+    ) -> None:
+        """
+        Load the client's and server's private key and CSR from the specified file paths.
+
+        This method assigns the provided file paths to the corresponding attributes for
+        the client's and server's private keys and Certificate Signing Requests (CSRs).
+        These files are essential for cryptographic operations such as signing and verifying
+        certificates.
+
+        Parameters
+        ----------
+        private_key_client_path : str
+            The file path to the client's private key.
+        certificate_client_path : str
+            The file path to the client's Certificate Signing Request (CSR).
+        private_key_server_path : str
+            The file path to the server's private key.
+        certificate_server_path : str
+            The file path to the server's Certificate Signing Request (CSR).
+
+        Raises
+        ------
+        FileNotFoundError
+            If any of the provided file paths do not point to existing files.
+        IOError
+            If there is an error reading any of the provided files.
+        """
+        self.private_key_client_path_ = private_key_client_path
+        self.certificate_client_path_ = certificate_client_path
+        self.private_key_server_path_ = private_key_server_path
+        self.certificate_server_path_ = certificate_server_path
 
     # ----------------------------------------------------------------------
     @property
@@ -391,8 +509,12 @@ class CertificateAuthority:
             If the CSR path is not set.
         """
         return {
-            'client': self.certificate_paths['client'].replace('.csr', '.cert'),
-            'server': self.certificate_paths['server'].replace('.csr', '.cert'),
+            'client': self.certificate_paths['client'].replace(
+                '.csr', '.cert'
+            ),
+            'server': self.certificate_paths['server'].replace(
+                '.csr', '.cert'
+            ),
         }
 
     # ----------------------------------------------------------------------
@@ -469,20 +591,36 @@ class CertificateAuthority:
         The context requires a Certificate Authority (CA) certificate to verify clients.
         The verification mode is set to require SSL certificates (CERT_REQUIRED).
         """
-        ssl_context_client = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
+        # Create a default SSL context for the client, specifying that it's intended for server authentication
+        ssl_context_client = ssl.create_default_context(
+            ssl.Purpose.SERVER_AUTH
+        )
+        # Load and set the client's certificate and private key for the SSL context
         ssl_context_client.load_cert_chain(
             certfile=self.certificate_signed_paths['client'],
             keyfile=self.private_key_paths['client'],
         )
-        ssl_context_client.load_verify_locations(cafile=self.ca_certificate_path)
+        # Load and set the Certificate Authority (CA) certificate to verify the client's server certificate
+        ssl_context_client.load_verify_locations(
+            cafile=self.ca_certificate_path
+        )
+        # Set the verification mode of the SSL context to require SSL certificates (CERT_REQUIRED).
         ssl_context_client.verify_mode = ssl.CERT_REQUIRED
 
-        ssl_context_server = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+        # Create a default SSL context for the server, specifying that it's intended for client authentication
+        ssl_context_server = ssl.create_default_context(
+            ssl.Purpose.CLIENT_AUTH
+        )
+        # Load and set the server's certificate and private key for the SSL context
         ssl_context_server.load_cert_chain(
             certfile=self.certificate_signed_paths['server'],
             keyfile=self.private_key_paths['server'],
         )
-        ssl_context_server.load_verify_locations(cafile=self.ca_certificate_path)
+        # Load and set the Certificate Authority (CA) certificate to verify the server's client certificate
+        ssl_context_server.load_verify_locations(
+            cafile=self.ca_certificate_path
+        )
+        # Set the verification mode of the SSL context to require SSL certificates (CERT_REQUIRED).
         ssl_context_server.verify_mode = ssl.CERT_REQUIRED
 
         return ssl_context_client, ssl_context_server
