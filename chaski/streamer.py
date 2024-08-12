@@ -157,7 +157,8 @@ class ChaskiStreamer(ChaskiNode):
         return {
             # Get the status of paired events for each subscription
             "paired": {
-                sub: self.paired_event[sub].is_set() for sub in self.subscriptions
+                sub: self.paired_event[sub].is_set()
+                for sub in self.subscriptions
             },
             # Check if the server is closing; 'True' means it's still serving.
             "serving": not self.server_closing,
@@ -233,7 +234,9 @@ class ChaskiStreamer(ChaskiNode):
         await self._write('ChaskiMessage', data=data, topic=topic)
 
     # ----------------------------------------------------------------------
-    async def _process_ChaskiMessage(self, message: 'Message', edge: 'Edge') -> None:
+    async def _process_ChaskiMessage(
+        self, message: 'Message', edge: 'Edge'
+    ) -> None:
         """
         Process an incoming Chaski message and place it onto the message queue.
 
@@ -365,7 +368,9 @@ class ChaskiStreamer(ChaskiNode):
             hash_func.update(chunk)
             # Package the chunked file data along with metadata such as filename, hash, and chunk size
             package_data = {
-                'filename': filename if filename else os.path.split(file.name)[-1],
+                'filename': (
+                    filename if filename else os.path.split(file.name)[-1]
+                ),
                 'chunk': chunk,
                 'hash': hash_func.hexdigest(),
                 'data': data,
@@ -382,7 +387,9 @@ class ChaskiStreamer(ChaskiNode):
                 break
 
     # ----------------------------------------------------------------------
-    async def _process_ChaskiFile(self, message: 'Message', edge: 'Edge') -> None:
+    async def _process_ChaskiFile(
+        self, message: 'Message', edge: 'Edge'
+    ) -> None:
         """
         Process an incoming ChaskiFile message and append each chunk of data to the target file.
 
@@ -412,7 +419,10 @@ class ChaskiStreamer(ChaskiNode):
         # Append incoming file chunk data to the target file in append-binary mode
         if chunk := message.data.pop('chunk'):
             with open(
-                os.path.join(self.destination_folder, message.data['filename']), 'ab'
+                os.path.join(
+                    self.destination_folder, message.data['filename']
+                ),
+                'ab',
             ) as file:
                 # Write the current chunk to the target file in append-binary mode
                 file.write(chunk)
