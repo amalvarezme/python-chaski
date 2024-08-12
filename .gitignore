@@ -166,3 +166,7 @@ docs/build/
 _sandbox/
 _notebooks/
 test/testdir/
+test/ssl_certificates_location/
+test/ssl_certificates_location/
+test/certs/
+test/certs_ca/
