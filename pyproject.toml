@@ -52,3 +52,6 @@ docs = []
 security = [
     "cryptography"
 ]
+
+[project.scripts]
+chaski_ca = "chaski.scripts.ca_server:main"
