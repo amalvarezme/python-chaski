@@ -27,9 +27,10 @@ from typing import Any, Optional
 from functools import cache, lru_cache
 
 from chaski.node import ChaskiNode
+from chaski.utils.debug import styled_logger
 
 # Initialize logger for ChaskiRemote operations
-logger_remote = logging.getLogger("ChaskiRemote")
+logger_remote = styled_logger(logging.getLogger("ChaskiRemote"))
 
 # Apply nested asyncio event loop to allow recursive event loop usage
 nest_asyncio.apply()
@@ -478,6 +479,8 @@ class ChaskiProxy:
             An ChaskiObjectProxying instance that will delegate attribute access
             to the underlying proxied object.
         """
+        print(f"Getting {self._name}")
+
         return ChaskiObjectProxying(
             name=self._name,
             obj=self._proxy_get,
@@ -519,7 +522,18 @@ class ChaskiProxy:
         if not getattr(self, '_obj'):
             # self._chain.append(attr)
             setattr(self, '_chain', getattr(self, '_chain') + [attr])
-            setattr(self, '_root', self)
+            # setattr(self, '_root', self)
+
+            if getattr(self, '_root') is None:
+                tmp = ChaskiProxy(
+                    name=self._name,
+                    node=self._node,
+                    # obj=self._obj,
+                    edge=self._edge,
+                    # chain=self._chain,
+                    root=self,
+                )
+                return getattr(tmp, attr)
 
         # Dynamically adds attributes to the ChaskitProxy class.
         # When an attribute is accessed, it creates a new ChaskitProxy instance for that attribute,
@@ -536,6 +550,7 @@ class ChaskiProxy:
                 root=self,
             ),
         )
+        print(f"Getattr {attr}")
 
         # If the requested attribute starts with an underscore, returning None.
         # Otherwise, returning the ChaskitProxy itself, facilitating chained attribute access.
@@ -852,13 +867,13 @@ class ChaskiRemote(ChaskiNode):
 
             self.proxies[name]._reset()
 
-            # if callable(attr):
-            #     return 'repr', repr(attr)
-            # else:
-            try:
-                return 'serialized', self.serializer(attr)
-            except:
-                return 'serialized', repr(attr)
+            if callable(attr):
+                return 'repr', repr(attr)
+            else:
+                try:
+                    return 'serialized', self.serializer(attr)
+                except:
+                    return 'serialized', repr(attr)
         else:
             return (
                 'exception',
