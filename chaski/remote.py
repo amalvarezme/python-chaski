@@ -24,7 +24,6 @@ import nest_asyncio
 from copy import copy
 from datetime import datetime
 from typing import Any, Optional
-from functools import cache, lru_cache
 
 from chaski.node import ChaskiNode
 from chaski.utils.debug import styled_logger
@@ -133,7 +132,7 @@ class ChaskiObjectProxying(object):
     ]
 
     # ----------------------------------------------------------------------
-    def __init__(self, name: str, obj: Any, instance: Any, parent: Any):
+    def __init__(self, name: str, obj: Any, instance: Any):
         """
         Initialize an `ChaskiObjectProxying` instance.
 
@@ -143,24 +142,22 @@ class ChaskiObjectProxying(object):
 
         Parameters
         ----------
+        name : str
+            The name of the proxy.
         obj : Any
             The object that is being proxied.
         instance : Any
             The instance of the class that contains the ChaskitProxy as a descriptor.
-        parent : Any
-            The parent proxy that manages this instance.
-        name : str
-            The name of the proxy.
 
         Notes
         -----
         The attributes are set using `object.__setattr__` to avoid triggering
         custom `__setattr__` implementations of the proxied object.
         """
+        # Using object.__setattr__ to directly set attributes, avoiding any custom __setattr__ in the proxied object
         object.__setattr__(self, "_name", name)
         object.__setattr__(self, "_obj", obj)
         object.__setattr__(self, "_instance", instance)
-        # object.__setattr__(self, "_parent", parent)
 
     # ----------------------------------------------------------------------
     @classmethod
@@ -367,37 +364,40 @@ class ChaskiProxy:
         self,
         name: str,
         node: Optional[Any] = None,
-        obj: Optional[Any] = None,  # For remote instance
-        edge: Optional[Any] = None,  # For local instance
+        obj: Optional[Any] = None,
+        edge: Optional[Any] = None,
         chain: Optional[list[str]] = None,
         root: Optional['ChaskiProxy'] = None,
     ):
         """
-        Initialize the `ChaskitProxy` instance.
+        Initialize a `ChaskiProxy` instance.
 
         Parameters
         ----------
         name : str
-            The name associated with the proxy.
-        obj : Any, optional
-            The object to be proxied, by default None.
+            The name of the proxy.
         node : Any, optional
-            The node to which the proxied object belongs, by default None.
+            The node associated with the proxied object. Default is None.
+        obj : Any, optional
+            The object that is being proxied. Default is None.
         edge : Any, optional
-            The edge associated with the proxied object, by default None.
-        root : bool, optional
-            Flag indicating whether this is the root proxy, by default False.
-        chain : list of str, optional
-            The chain of attribute names accessed on the proxied object,
-            by default None.
+            The edge associated with the proxied object. Default is None.
+        chain : list[str], optional
+            The chain of attribute names being accessed on the proxied object. Default is None.
+        root : ChaskiProxy, optional
+            The root proxy reference, if this is a nested proxy. Default is None.
+
+        Notes
+        -----
+        The `chain` parameter is used to keep track of the sequence of attribute
+        names accessed on the proxied object. If no `chain` is provided, the
+        proxy's name will be used as the initial chain.
         """
         self._name = name
         self._obj = obj
         self._node = node
         self._edge = edge
         self._root = root
-
-        setattr(self, '_resolved', False)
 
         # Initialize the attribute chain for the proxied object.
         # If no chain is provided, use the proxy's name as the initial chain.
@@ -407,25 +407,36 @@ class ChaskiProxy:
             self._chain = chain
 
     # ----------------------------------------------------------------------
-    def __repr__(self):
-        """"""
+    def __repr__(self) -> str:
+        """
+        Provide a string representation of the ChaskiProxy instance.
+
+        This method returns a string that describes the ChaskiProxy instance, including
+        its name, whether it is a remote or local proxy, and the address of the associated node.
+
+        Returns
+        -------
+        str
+            A string representation of the ChaskiProxy instance.
+
+        Notes
+        -----
+        This string representation is useful for debugging and logging purposes.
+        """
         return f"ChaskiProxy({self._name}:{'remote' if self._obj else 'local'}, {self._node.address})"
 
     # ----------------------------------------------------------------------
-    def _reset(self):
-        """"""
+    def _reset(self) -> None:
+        """
+        Reset the attribute chain to its initial state.
+
+        This method reinitializes the `self._chain` attribute, which tracks
+        the sequence of attribute accesses on the proxied object. It sets
+        the chain back to its initial state, containing only the name of
+        the root attribute. This is typically used after a method invocation
+        to ensure that subsequent attribute accesses start from the root.
+        """
         self._chain = [self._chain[0]]
-
-    # ----------------------------------------------------------------------
-    def __setattr__(self, attr, value):
-        """"""
-        if attr == '_chain':
-            logger_remote.debug(
-                f"{attr} {self} {getattr(self, attr)} -> {value}"
-            )
-            value
-
-        return super().__setattr__(attr, value)
 
     # ----------------------------------------------------------------------
     def _object(self, obj_chain: list[str]) -> Any:
@@ -479,13 +490,10 @@ class ChaskiProxy:
             An ChaskiObjectProxying instance that will delegate attribute access
             to the underlying proxied object.
         """
-        print(f"Getting {self._name}")
-
         return ChaskiObjectProxying(
             name=self._name,
             obj=self._proxy_get,
             instance=instance,
-            parent=self,
         )
 
     # ----------------------------------------------------------------------
@@ -507,33 +515,24 @@ class ChaskiProxy:
         Any
             The proxy object itself, allowing for chained attribute access.
         """
+        # If the requested attribute starts with an underscore, returning None.
         if attr.startswith('_'):
             return None
 
-        # if not getattr(self, '_obj'):
-        #     if not getattr(self, '_root'):
-        #         setattr(self, '_chain', [self._name])
-        #
-        if getattr(self, '_resolved'):
-            setattr(self, '_chain', [self._name])
-            setattr(self, '_resolved', False)
-
-        # Append the requested attribute to the chain for dynamic attribute access.
+        # If the proxied object is not yet fully resolved, append the attribute to the chain.
         if not getattr(self, '_obj'):
-            # self._chain.append(attr)
             setattr(self, '_chain', getattr(self, '_chain') + [attr])
-            # setattr(self, '_root', self)
 
+            # If this is the root proxy, create a new ChaskiProxy for the current attribute
             if getattr(self, '_root') is None:
-                tmp = ChaskiProxy(
+                proxy = ChaskiProxy(
                     name=self._name,
                     node=self._node,
-                    # obj=self._obj,
                     edge=self._edge,
-                    # chain=self._chain,
                     root=self,
                 )
-                return getattr(tmp, attr)
+                self._reset()
+                return getattr(proxy, attr)
 
         # Dynamically adds attributes to the ChaskitProxy class.
         # When an attribute is accessed, it creates a new ChaskitProxy instance for that attribute,
@@ -544,13 +543,11 @@ class ChaskiProxy:
             ChaskiProxy(
                 name=attr,
                 node=self._node,
-                # obj=self._obj,
                 edge=self._edge,
                 chain=self._chain,
                 root=self,
             ),
         )
-        print(f"Getattr {attr}")
 
         # If the requested attribute starts with an underscore, returning None.
         # Otherwise, returning the ChaskitProxy itself, facilitating chained attribute access.
@@ -658,20 +655,9 @@ class ChaskiProxy:
         for obj in self._chain[1:]:
             self._cleanup_dynamic_attribute(obj)
 
-        if (
-            not (args is None)
-            and not (kwargs is None)
-            and (status == 'serialized')
-        ):
-            # Final client getter
-            self._reset()
-            self._resolved = True
-            setattr(self, '_resolved', True)
-
-        # if self._root:
-        #     self._root._reset()
-        # self._rootself._root
-
+        # Process the status and response from the proxied method call.
+        # Depending on the status, return the deserialized object, raise an exception,
+        # or return a textual representation of the object.
         match status:
             case 'serialized':
                 return self._node.deserializer(response)
@@ -787,6 +773,8 @@ class ChaskiRemote(ChaskiNode):
         ----------
         module : str
             The name of the service/module to retrieve a proxy for.
+        edge : Optional[str]
+            The specific edge to connect with for the module's availability. Default is None.
 
         Returns
         -------
@@ -893,6 +881,8 @@ class ChaskiRemote(ChaskiNode):
         ----------
         module : str
             The name of the module to check for availability.
+        edge : Optional[str]
+            The specific edge to check for the module's availability. If not provided, checks all edges.
 
         Returns
         -------
