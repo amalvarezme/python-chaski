@@ -45,11 +45,14 @@ from typing import (
 )
 
 from chaski.utils.certificate_authority import CertificateAuthority
+from chaski.utils.debug import styled_logger
+
 
 # Initialize loggers for the main node operations, edge connections, and UDP protocol
-logger_main = logging.getLogger("ChaskiNode")
-logger_edge = logging.getLogger("ChaskiNodeEdge")
-logger_udp = logging.getLogger("ChaskiNodeUDP")
+logger_main = styled_logger(logging.getLogger("ChaskiNode"))
+logger_edge = styled_logger(logging.getLogger("ChaskiNodeEdge"))
+logger_udp = styled_logger(logging.getLogger("ChaskiNodeUDP"))
+
 
 # List of default ports the ChaskiNode will attempt to use for establishing connections
 FAVORITE_PORTS = [

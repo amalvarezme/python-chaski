@@ -5,8 +5,9 @@ import asyncio
 
 from chaski.node import ChaskiNode
 from chaski.utils.certificate_authority import CertificateAuthority
+from chaski.utils.debug import styled_logger
 
-logger_ca = logging.getLogger("ChaskiCA")
+logger_ca = styled_logger(logging.getLogger("ChaskiCA"))
 
 
 ########################################################################
