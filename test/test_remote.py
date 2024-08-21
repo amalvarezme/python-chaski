@@ -120,6 +120,37 @@ class TestRemote(unittest.IsolatedAsyncioTestCase):
         await server.stop()
         await client.stop()
 
+    # ----------------------------------------------------------------------
+    async def test_secuential_calls(self):
+        """"""
+        server = ChaskiRemote(
+            port=65434,
+            available=['os'],
+            reconnections=None,
+        )
+        await asyncio.sleep(0.3)
+
+        client = ChaskiRemote(
+            port=65435,
+            reconnections=None,
+        )
+        await client.connect(server.address)
+        await asyncio.sleep(0.3)
+
+        os_remote = client.proxy('os')
+        await asyncio.sleep(0.3)
+
+        for _ in range(3):
+            remote_listdir = os_remote.listdir('.')
+            os_remote._chain
+            # self.assertIsInstance(remote_listdir, list)
+            remote_name = os_remote.name
+            os_remote._chain
+            # self.assertEqual(str(remote_name), os.name)
+
+        await server.stop()
+        await client.stop()
+
 
 if __name__ == '__main__':
     unittest.main()
