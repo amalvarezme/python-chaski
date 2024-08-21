@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import logging
 import os
 
 from chaski.ca import ChaskiCA
