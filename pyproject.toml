@@ -36,16 +36,16 @@ classifiers = [
 dependencies = []
 
 [project.urls]
-"Download" = "https://github.com/dunderlab/python-chaski"
+"Repository" = "https://github.com/dunderlab/python-chaski"
 
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["chaski"]
-
 [project.optional-dependencies]
 dev = [
     "networkx",
-    "matplotlib"
+    "matplotlib",
+    "colorama",
     ]
 docs = []
 
@@ -55,4 +55,5 @@ security = [
 
 [project.scripts]
 chaski_ca = "chaski.scripts.ca_server:main"
+chaski_remote = "chaski.scripts.remote_server:main"
 chaski_close_ports = "chaski.scripts.close_ports:main"
