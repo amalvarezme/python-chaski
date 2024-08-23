@@ -158,6 +158,7 @@ class ChaskiObjectProxying(object):
         object.__setattr__(self, "_name", name)
         object.__setattr__(self, "_obj", obj)
         object.__setattr__(self, "_instance", instance)
+        object.__setattr__(self, "_argskwargs", True)
 
     # ----------------------------------------------------------------------
     @classmethod
@@ -190,15 +191,47 @@ class ChaskiObjectProxying(object):
         """
 
         def make_method(name):
-            def method(self, *args, **kw):
+            def method(self, *args, **kwargs):
                 # Set _chain attribute of the _instance to restart the chain from the initial element
 
-                obj = getattr(
-                    object.__getattribute__(self, "_instance"),
-                    'processor_method',
-                )(object.__getattribute__(self, "_instance"), args, kw)
+                if object.__getattribute__(self, '_argskwargs'):
 
-                # getattr(object.__getattribute__(self, "_instance"), '_chain')[0]
+                    try:
+                        obj = getattr(
+                            object.__getattribute__(self, "_instance"),
+                            'processor_method',
+                        )(
+                            object.__getattribute__(self, "_instance"),
+                            args,
+                            kwargs,
+                        )
+
+                    except Exception as e:
+                        if "object is not callable" in str(e):
+                            try:
+                                obj = getattr(
+                                    object.__getattribute__(
+                                        self, "_instance"
+                                    ),
+                                    'processor_method',
+                                )()
+                            except Exception as e:
+                                obj = getattr(
+                                    object.__getattribute__(
+                                        self, "_instance"
+                                    ),
+                                    'processor_method',
+                                )
+
+                else:
+                    obj = getattr(
+                        object.__getattribute__(self, "_instance"),
+                        'processor_method',
+                    )(
+                        object.__getattribute__(self, "_instance"),
+                        False,
+                        False,
+                    )
 
                 setattr(
                     object.__getattribute__(self, "_instance"),
@@ -284,6 +317,7 @@ class ChaskiObjectProxying(object):
     # to delegate these operations to the actual proxied object.
 
     def __getattr__(self, attr):
+        object.__setattr__(self, "_argskwargs", False)
         return getattr(object.__getattribute__(self, "_instance"), attr)
 
     def __delattr__(self, attr):
@@ -303,6 +337,10 @@ class ChaskiObjectProxying(object):
 
     def __hash__(self):
         return hash(object.__getattribute__(self, "_obj"))
+
+    # def __call__(self, *args, **keargs):
+    #     """"""
+    #     return args
 
     # ----------------------------------------------------------------------
     @property
@@ -793,6 +831,14 @@ class ChaskiRemote(ChaskiNode):
             )
 
     # ----------------------------------------------------------------------
+    def geeeet(self, obj, obj_chain):
+        """"""
+
+        for obj_ in obj_chain:
+            obj = getattr(obj, obj_)
+        return obj
+
+    # ----------------------------------------------------------------------
     async def _call_obj_by_proxy(self, **kwargs: dict[str, Any]) -> Any:
         """
         Asynchronously call a method on a proxied object with provided arguments.
@@ -833,23 +879,31 @@ class ChaskiRemote(ChaskiNode):
         timestamp = kwargs['timestamp']
         kwargs_ = kwargs['kwargs']
 
-        if args and kwargs:
+        if args or kwargs_:
             logger_remote.warning(
                 f"{self.name}-{timestamp}: Calling {name}.{'.'.join(obj)} with args:{args} kwargs:{kwargs_}"
             )
 
         if name in self.proxies:
-            if args or kwargs_:
-                # Invoke the resolved method on the proxied object with specified arguments and keyword arguments.
+
+            if (args is None) and (kwargs_ is None):
                 try:
-                    attr = self.proxies[name]._object(obj)(*args, **kwargs_)
+                    attr = self.proxies[name]._object(obj)()
+                except Exception as e:
+                    if "object is not callable" in str(e):
+                        attr = self.proxies[name]._object(obj)
+                    else:
+                        return 'exception', e
+
+            elif (args is False) and (kwargs_ is False):
+                try:
+                    attr = self.proxies[name]._object(obj)
                 except Exception as e:
                     return 'exception', e
 
             else:
-                # Return the proxied object obtained after traversing the attribute chain.
                 try:
-                    attr = self.proxies[name]._object(obj)
+                    attr = self.proxies[name]._object(obj)(*args, **kwargs_)
                 except Exception as e:
                     return 'exception', e
 
