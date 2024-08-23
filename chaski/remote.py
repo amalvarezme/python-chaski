@@ -54,81 +54,71 @@ class ChaskiObjectProxying(object):
 
     # Special method names that will be intercepted by the ChaskiObjectProxying class
     _special_names = [
-        '__abs__',
-        '__add__',
-        '__and__',
         '__call__',
-        '__cmp__',
-        '__coerce__',
-        '__contains__',
-        '__delitem__',
-        '__delslice__',
-        '__div__',
-        '__divmod__',
-        '__eq__',
-        '__float__',
-        '__floordiv__',
-        '__ge__',
-        '__getitem__',
-        '__getslice__',
-        '__gt__',
-        '__hex__',
-        '__iadd__',
-        '__iand__',
-        #'__hash__',
-        '__idiv__',
-        '__idivmod__',
-        '__ifloordiv__',
-        '__ilshift__',
-        '__imod__',
-        '__imul__',
-        '__int__',
-        '__invert__',
-        '__ior__',
-        '__ipow__',
-        '__irshift__',
-        '__isub__',
-        '__iter__',
-        '__itruediv__',
-        '__ixor__',
-        '__le__',
-        '__len__',
-        '__long__',
-        '__lshift__',
-        '__lt__',
-        '__mod__',
-        '__mul__',
-        '__ne__',
-        '__neg__',
-        '__oct__',
-        '__or__',
-        '__pos__',
-        '__pow__',
-        '__radd__',
-        '__rand__',
-        '__rdiv__',
-        '__rdivmod__',
         '__reduce__',
         '__reduce_ex__',
         '__repr__',
-        '__reversed__',
-        '__rfloorfiv__',
-        '__rlshift__',
-        '__rmod__',
-        '__rmul__',
-        '__ror__',
-        '__rpow__',
-        '__rrshift__',
-        '__rshift__',
-        '__rsub__',
-        '__rtruediv__',
-        '__rxor__',
-        '__setitem__',
-        '__setslice__',
-        '__sub__',
-        '__truediv__',
-        '__xor__',
         'next',
+        # '__abs__',
+        # '__divmod__',
+        # '__iand__',
+        # '__idivmod__',
+        # '__ilshift__',
+        # '__ior__',
+        # '__irshift__',
+        # '__iter__',
+        # '__ixor__',
+        # '__pos__',
+        # '__rand__',
+        # '__rdivmod__',
+        # '__reversed__',
+        # '__rfloordiv__',
+        # '__rlshift__',
+        # '__ror__',
+        # '__rrshift__',
+        # '__rxor__',
+        # '__add__',
+        # '__and__',
+        # '__contains__',
+        # '__delitem__',
+        # '__eq__',
+        # '__float__',
+        # '__floordiv__',
+        # '__ge__',
+        # '__getitem__',
+        # '__gt__',
+        # '__iadd__',
+        # '__hash__',
+        # '__ifloordiv__',
+        # '__imod__',
+        # '__imul__',
+        # '__int__',
+        # '__invert__',
+        # '__ipow__',
+        # '__isub__',
+        # '__itruediv__',
+        # '__le__',
+        # '__len__',
+        # '__lshift__',
+        # '__lt__',
+        # '__mod__',
+        # '__mul__',
+        # '__ne__',
+        # '__neg__',
+        # '__oct__',
+        # '__or__',
+        # '__pow__',
+        # '__radd__',
+        # '__rmod__',
+        # '__rmul__',
+        # '__rpow__',
+        # '__rshift__',
+        # '__rsub__',
+        # '__rtruediv__',
+        # '__setitem__',
+        # '__sub__',
+        # '__truediv__',
+        # '__xor__',
     ]
 
     # ----------------------------------------------------------------------
@@ -332,15 +322,230 @@ class ChaskiObjectProxying(object):
     def __str__(self):
         return str(object.__getattribute__(self, "_obj"))
 
-    def __repr__(self):
-        return repr(object.__getattribute__(self, "_obj"))
+    # def __repr__(self):
+    #     return repr(object.__getattribute__(self, "_obj"))
 
     def __hash__(self):
         return hash(object.__getattribute__(self, "_obj"))
 
-    # def __call__(self, *args, **keargs):
-    #     """"""
-    #     return args
+    # Operaciones Aritméticas
+
+    def __add__(self, other):
+        return object.__getattribute__(self, "_obj") + other
+
+    def __sub__(self, other):
+        return object.__getattribute__(self, "_obj") - other
+
+    def __mul__(self, other):
+        return object.__getattribute__(self, "_obj") * other
+
+    def __truediv__(self, other):
+        return object.__getattribute__(self, "_obj") / other
+
+    def __floordiv__(self, other):
+        return object.__getattribute__(self, "_obj") // other
+
+    def __mod__(self, other):
+        return object.__getattribute__(self, "_obj") % other
+
+    def __pow__(self, other):
+        return object.__getattribute__(self, "_obj") ** other
+
+    def __neg__(self):
+        return -object.__getattribute__(self, "_obj")
+
+    def __abs__(self):
+        return abs(object.__getattribute__(self, "_obj"))
+
+    def __divmod__(self, other):
+        return divmod(object.__getattribute__(self, "_obj"), other)
+
+    def __pos__(self):
+        return +object.__getattribute__(self, "_obj")
+
+    # Inverse Arithmetic Operations
+
+    def __radd__(self, other):
+        return other + object.__getattribute__(self, "_obj")
+
+    def __rsub__(self, other):
+        return other - object.__getattribute__(self, "_obj")
+
+    def __rmul__(self, other):
+        return other * object.__getattribute__(self, "_obj")
+
+    def __rtruediv__(self, other):
+        return other / object.__getattribute__(self, "_obj")
+
+    def __rfloordiv__(self, other):
+        return other // object.__getattribute__(self, "_obj")
+
+    def __rmod__(self, other):
+        return other % object.__getattribute__(self, "_obj")
+
+    def __rpow__(self, other):
+        return other ** object.__getattribute__(self, "_obj")
+
+    def __rdivmod__(self, other):
+        return divmod(other, object.__getattribute__(self, "_obj"))
+
+    # In-Place Arithmetic Operations
+
+    def __iadd__(self, other):
+        obj = object.__getattribute__(self, "_obj")
+        obj += other
+        return self
+
+    def __isub__(self, other):
+        obj = object.__getattribute__(self, "_obj")
+        obj -= other
+        return self
+
+    def __imul__(self, other):
+        obj = object.__getattribute__(self, "_obj")
+        obj *= other
+        return self
+
+    def __itruediv__(self, other):
+        obj = object.__getattribute__(self, "_obj")
+        obj /= other
+        return self
+
+    def __ifloordiv__(self, other):
+        obj = object.__getattribute__(self, "_obj")
+        obj //= other
+        return self
+
+    def __imod__(self, other):
+        obj = object.__getattribute__(self, "_obj")
+        obj %= other
+        return self
+
+    def __ipow__(self, other):
+        obj = object.__getattribute__(self, "_obj")
+        obj **= other
+        return self
+
+    # Comparison Operations
+
+    def __eq__(self, other):
+        return object.__getattribute__(self, "_obj") == other
+
+    def __ne__(self, other):
+        return object.__getattribute__(self, "_obj") != other
+
+    def __lt__(self, other):
+        return object.__getattribute__(self, "_obj") < other
+
+    def __le__(self, other):
+        return object.__getattribute__(self, "_obj") <= other
+
+    def __gt__(self, other):
+        return object.__getattribute__(self, "_obj") > other
+
+    def __ge__(self, other):
+        return object.__getattribute__(self, "_obj") >= other
+
+    # Bitwise Operations
+
+    def __and__(self, other):
+        return object.__getattribute__(self, "_obj") & other
+
+    def __or__(self, other):
+        return object.__getattribute__(self, "_obj") | other
+
+    def __xor__(self, other):
+        return object.__getattribute__(self, "_obj") ^ other
+
+    def __lshift__(self, other):
+        return object.__getattribute__(self, "_obj") << other
+
+    def __rshift__(self, other):
+        return object.__getattribute__(self, "_obj") >> other
+
+    def __invert__(self):
+        return ~object.__getattribute__(self, "_obj")
+
+    # Conversion Operations
+
+    def __int__(self):
+        return int(object.__getattribute__(self, "_obj"))
+
+    def __bool__(self):
+        return bool(object.__getattribute__(self, "_obj"))
+
+    def __float__(self):
+        return float(object.__getattribute__(self, "_obj"))
+
+    # Container Operations
+
+    def __getitem__(self, key):
+        return object.__getattribute__(self, "_obj")[key]
+
+    def __setitem__(self, key, value):
+        object.__getattribute__(self, "_obj")[key] = value
+
+    def __delitem__(self, key):
+        del object.__getattribute__(self, "_obj")[key]
+
+    def __contains__(self, item):
+        return item in object.__getattribute__(self, "_obj")
+
+    def __len__(self):
+        return len(object.__getattribute__(self, "_obj"))
+
+    # Bitwise Operations
+
+    def __iand__(self, other):
+        obj = object.__getattribute__(self, "_obj")
+        obj &= other
+        return self
+
+    def __ilshift__(self, other):
+        obj = object.__getattribute__(self, "_obj")
+        obj <<= other
+        return self
+
+    def __ior__(self, other):
+        obj = object.__getattribute__(self, "_obj")
+        obj |= other
+        return self
+
+    def __irshift__(self, other):
+        obj = object.__getattribute__(self, "_obj")
+        obj >>= other
+        return self
+
+    def __ixor__(self, other):
+        obj = object.__getattribute__(self, "_obj")
+        obj ^= other
+        return self
+
+    def __rand__(self, other):
+        return other & object.__getattribute__(self, "_obj")
+
+    def __rfloordiv__(self, other):
+        return other // object.__getattribute__(self, "_obj")
+
+    def __rlshift__(self, other):
+        return other << object.__getattribute__(self, "_obj")
+
+    def __ror__(self, other):
+        return other | object.__getattribute__(self, "_obj")
+
+    def __rrshift__(self, other):
+        return other >> object.__getattribute__(self, "_obj")
+
+    def __rxor__(self, other):
+        return other ^ object.__getattribute__(self, "_obj")
+
+    # Iteration Operations
+
+    def __reversed__(self):
+        return reversed(object.__getattribute__(self, "_obj"))
+
+    def __iter__(self):
+        return iter(object.__getattribute__(self, "_obj"))
 
     # ----------------------------------------------------------------------
     @property
@@ -830,13 +1035,13 @@ class ChaskiRemote(ChaskiNode):
                 f"Module {module} not found in the conected edges"
             )
 
-    # ----------------------------------------------------------------------
-    def geeeet(self, obj, obj_chain):
-        """"""
-
-        for obj_ in obj_chain:
-            obj = getattr(obj, obj_)
-        return obj
+    #     # ----------------------------------------------------------------------
+    #     def geeeet(self, obj, obj_chain):
+    #         """"""
+    #
+    #         for obj_ in obj_chain:
+    #             obj = getattr(obj, obj_)
+    #         return obj
 
     # ----------------------------------------------------------------------
     async def _call_obj_by_proxy(self, **kwargs: dict[str, Any]) -> Any:
@@ -1012,5 +1217,5 @@ class ChaskiRemote(ChaskiNode):
             logger_remote.warning(f"{self.name}: Registered {module}")
             return True
         except Exception as e:
-            print(e)
+            logger_remote.error(e)
             return False
