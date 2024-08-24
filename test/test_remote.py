@@ -16,7 +16,7 @@ import unittest
 import os
 import asyncio
 from chaski.remote import ChaskiRemote
-
+import numpy as np
 
 import logging
 
@@ -140,13 +140,46 @@ class TestRemote(unittest.IsolatedAsyncioTestCase):
         os_remote = client.proxy('os')
         await asyncio.sleep(0.3)
 
-        for _ in range(3):
-            remote_listdir = os_remote.listdir('.')
-            os_remote._chain
-            # self.assertIsInstance(remote_listdir, list)
-            remote_name = os_remote.name
-            os_remote._chain
-            # self.assertEqual(str(remote_name), os.name)
+        for _ in range(10):
+            self.assertIsInstance(os_remote.listdir('.'), list)
+            self.assertEqual(str(os_remote.name), os.name)
+            self.assertEqual(os_remote.name._, os.name)
+
+        await server.stop()
+        await client.stop()
+
+    # ----------------------------------------------------------------------
+    async def test_numpy_calls(self):
+        """"""
+        server = ChaskiRemote(
+            port=65434,
+            available=['numpy'],
+            reconnections=None,
+        )
+        await asyncio.sleep(0.3)
+
+        client = ChaskiRemote(
+            port=65435,
+            reconnections=None,
+        )
+        await client.connect(server.address)
+        await asyncio.sleep(0.3)
+
+        np_remote = client.proxy('numpy')
+        await asyncio.sleep(0.3)
+
+        self.assertIsInstance(np_remote.pi._, float)
+        self.assertEqual(
+            np_remote.random.normal(0, 1, size=(2, 2)).shape, (2, 2)
+        )
+        self.assertEqual(
+            np_remote.random.normal(0, 1, size=(4, 4)).shape, (4, 4)
+        )
+        self.assertAlmostEqual(np_remote.pi._, 3.141592653589793)
+
+        state = np_remote.random.get_state()
+        seed = state[1][0]
+        self.assertIsInstance(seed, np.uint32)
 
         await server.stop()
         await client.stop()
