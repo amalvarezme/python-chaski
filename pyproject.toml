@@ -3,9 +3,9 @@ requires = ["setuptools>=42", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "chaski"
-version = "0.1a3"
-description = "Chaski Confluence"
+name = "chaski-confluent"
+version = "0.1a1"
+description = "Chaski Confluent"
 readme = "README.md"
 requires-python = ">=3.8"
 license = { text = "BSD-2-Clause" }
