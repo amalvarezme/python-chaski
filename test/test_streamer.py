@@ -138,7 +138,9 @@ class TestStreamer(unittest.IsolatedAsyncioTestCase):
             if os.path.exists(os.path.join('testdir', 'output', filename)):
                 os.remove(os.path.join('testdir', 'output', filename))
 
-            with open(os.path.join('testdir', 'input', filename), 'rb') as file:
+            with open(
+                os.path.join('testdir', 'input', filename), 'rb'
+            ) as file:
                 await producer.push_file(
                     'topicF',
                     file,
@@ -290,7 +292,9 @@ class TestStreamer(unittest.IsolatedAsyncioTestCase):
         async with chain5 as message_queue:
             async for incoming_message in message_queue:
 
-                self.assertEqual(f'test{count}', incoming_message.data['data'])
+                self.assertEqual(
+                    f'test{count}', incoming_message.data['data']
+                )
 
                 if count >= 5:
                     chain5.terminate_stream()
@@ -310,10 +314,29 @@ class TestStreamer(unittest.IsolatedAsyncioTestCase):
         await chain3.stop()
         await chain4.stop()
         await chain5.stop()
+
+    # ----------------------------------------------------------------------
+    async def test_root_node(self) -> None:
+        """
+        Test chaining of multiple ChaskiStreamer instances end-to-end.
+
+        This test method covers the following operations:
+        1. Initialize multiple producer nodes with the same subscription topic.
+        2. Chain them by connecting each producer to the next sequential producer.
+        3. Push messages from the initial producer and validate the received data at the final consumer in the chain.
+
+        The test ensures that the data propagates correctly through the chain of producers.
+
+        Raises
+        ------
+        AssertionError
+            If the received data at the final consumer does not match the expected values.
+        """
         chain0 = ChaskiStreamer(
             port=65432,
             name='Producer',
-            subscriptions=['topic1'],
+            root=True,
+            paired=True,
             reconnections=None,
         )
 
@@ -331,36 +354,12 @@ class TestStreamer(unittest.IsolatedAsyncioTestCase):
             reconnections=None,
         )
 
-        chain3 = ChaskiStreamer(
-            port=65435,
-            name='Producer',
-            subscriptions=['topic1'],
-            reconnections=None,
-        )
-
-        chain4 = ChaskiStreamer(
-            port=65436,
-            name='Producer',
-            subscriptions=['topic1'],
-            reconnections=None,
-        )
-
-        chain5 = ChaskiStreamer(
-            port=65437,
-            name='Producer',
-            subscriptions=['topic1'],
-            reconnections=None,
-        )
+        await asyncio.sleep(0.3)
+        await chain1.connect(chain0.address)
+        await chain2.connect(chain0.address)
 
         await asyncio.sleep(0.3)
-        await chain0.connect(chain1.address)
-        await chain1.connect(chain2.address)
-        await chain2.connect(chain3.address)
-        await chain3.connect(chain4.address)
-        await chain4.connect(chain5.address)
-
-        await asyncio.sleep(0.3)
-        await chain0.push(
+        await chain1.push(
             'topic1',
             {
                 'data': 'test0',
@@ -368,13 +367,15 @@ class TestStreamer(unittest.IsolatedAsyncioTestCase):
         )
 
         count = 0
-        async with chain5 as message_queue:
+        async with chain2 as message_queue:
             async for incoming_message in message_queue:
 
-                self.assertEqual(f'test{count}', incoming_message.data['data'])
+                self.assertEqual(
+                    f'test{count}', incoming_message.data['data']
+                )
 
                 if count >= 5:
-                    chain5.terminate_stream()
+                    chain2.terminate_stream()
 
                 count += 1
                 await chain0.push(
@@ -388,9 +389,6 @@ class TestStreamer(unittest.IsolatedAsyncioTestCase):
         await chain0.stop()
         await chain1.stop()
         await chain2.stop()
-        await chain3.stop()
-        await chain4.stop()
-        await chain5.stop()
 
 
 if __name__ == '__main__':
