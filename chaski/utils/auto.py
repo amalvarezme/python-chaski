@@ -18,7 +18,9 @@ PORT = 65432
 
 # ----------------------------------------------------------------------
 async def create_nodes(
-    subscriptions: Union[int, List[str]], ip: str = '127.0.0.1', port: int = PORT
+    subscriptions: Union[int, List[str]],
+    ip: str = '127.0.0.1',
+    port: int = PORT,
 ) -> List[ChaskiNode]:
     """
     Create a list of ChaskiNode instances.
@@ -54,7 +56,7 @@ async def create_nodes(
             subscriptions=sub,
             run=True,
             ttl=15,
-            root=(i == 0),
+            paired=(i == 0),
             reconnections=None,
         )
         for i, sub in enumerate(subscriptions)
@@ -85,7 +87,9 @@ async def run_transmission(producer, consumer, parent=None):
         async for incoming_message in message_queue:
 
             if parent:
-                parent.assertEqual(f'test{count}', incoming_message.data['data'])
+                parent.assertEqual(
+                    f'test{count}', incoming_message.data['data']
+                )
 
             if count >= 5:
                 return

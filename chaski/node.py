@@ -44,7 +44,13 @@ from typing import (
     Union,
 )
 
-from chaski.utils.certificate_authority import CertificateAuthority
+try:
+    from chaski.utils.certificate_authority import CertificateAuthority
+except ImportError as e:
+    import logging
+
+    logging.warning(f"Failed to import CertificateAuthority: {e}")
+
 from chaski.utils.debug import styled_logger
 
 
@@ -441,6 +447,7 @@ class ChaskiNode:
         run: bool = True,
         ttl: int = 64,
         root: bool = False,
+        paired: bool = False,
         max_connections: int = 5,
         reconnections: int = 32,
         messages_pool_maxzise: int = 128,
@@ -571,7 +578,7 @@ class ChaskiNode:
         self.paired_event = {}
         for subscription in subscriptions:
             self.paired_event[subscription] = asyncio.Event()
-            if root:
+            if paired:
                 self.paired_event[subscription].set()
 
         # Initialize the pool for storing messages with a maximum size
@@ -1153,9 +1160,9 @@ class ChaskiNode:
         )
         asyncio.create_task(self._reader_loop(edge))
 
-        # If there are no edges (connections) yet, designate this node as the root node
-        if not self.edges:
-            self.root = True
+        # # If there are no edges (connections) yet, designate this node as the root node
+        # if not self.edges:
+        #     self.root = True
 
         # Check if a connection to the peer ip and port already exists
         if (edge.ip, edge.port, False) in [
@@ -1214,7 +1221,11 @@ class ChaskiNode:
 
                 topic = self.deserializer(topic)
                 # Check if the topic is "All" or if the topic is in the node's subscriptions
-                if (topic == "All") or (topic in self.subscriptions):
+                if (
+                    (topic == "All")
+                    or (topic in self.subscriptions)
+                    or self.root
+                ):
                     data = await edge.reader.readexactly(length_data)
                     # Deserialize the received data into a message object
                     message = self.deserializer(data)

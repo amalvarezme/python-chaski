@@ -309,7 +309,7 @@ class ChaskiStreamer(ChaskiNode):
             if self.terminate_stream_flag:
                 break
             yield message
-        self.stop()
+        await self.stop()
         self.terminate_stream_flag = True
 
     # ----------------------------------------------------------------------
