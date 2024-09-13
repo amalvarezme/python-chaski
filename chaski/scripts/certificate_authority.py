@@ -1,7 +1,6 @@
 import asyncio
-import logging
 import os
-
+import logging
 from chaski.ca import ChaskiCA
 
 logging.basicConfig(level=logging.DEBUG)
@@ -18,12 +17,13 @@ if not os.path.exists(chaski_ca_dir):
 
 
 # ----------------------------------------------------------------------
-async def run():
+async def run(ip, port, name):
     """"""
     ca = ChaskiCA(
-        port=65432,
+        ip=ip,
+        port=port,
         ssl_certificates_location=chaski_ca_dir,
-        name='ChaskiCA',
+        name=name,
         run=False,
         ssl_certificate_attributes={
             'Country Name': "CO",
@@ -38,9 +38,9 @@ async def run():
 
 
 # ----------------------------------------------------------------------
-def main():
+def main(ip=None, port=65432, name='ChaskiCA'):
     """"""
-    asyncio.run(run())
+    asyncio.run(run(ip, port, name))
 
 
 if __name__ == '__main__':
