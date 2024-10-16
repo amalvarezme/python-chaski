@@ -38,7 +38,7 @@ async def run(ip, port, name):
 
 
 # ----------------------------------------------------------------------
-def main(ip=None, port=65432, name='ChaskiCA'):
+def main(ip='127.0.0.1', port=65432, name='ChaskiCA'):
     """"""
     asyncio.run(run(ip, port, name))
 
