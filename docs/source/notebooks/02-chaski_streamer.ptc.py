@@ -72,7 +72,6 @@ streamer.address
 producer = ChaskiStreamer(
     port=8511,
     name='Producer',
-    subscriptions=['topic1'],
 )
 producer
 
@@ -85,13 +84,13 @@ producer
 #
 
 # %%
-await producer.connect('*ChaskiStreamer@127.0.0.1:8511')
+await producer.connect('*ChaskiStreamer@127.0.0.1:65433')
 
 # %%
 message = {'data': 'Hello, World!'}
 
 # Stream a message to all subscribed nodes
-await streamer.push('topic1', message)
+await producer.push('topic1', message)
 
 # %% [markdown]
 # The `ChaskiStreamer` ensures messages are streamed efficiently, maintaining high
@@ -110,7 +109,7 @@ consumer = ChaskiStreamer(
     port=8512,
     name='Consumer',
     subscriptions=['topic1'],
-    root=True,
+    paired=True,
 )
 
 consumer
@@ -219,11 +218,11 @@ with open('test_file_02.pdf', 'rb') as file:
 def new_file_event(**kwargs):
     for key in kwargs:
         print(f"{k}: {kwargs[key]}")
-    
+
 
 consumer = ChaskiStreamer(
     ...
-    
+
     allow_incoming_files=True,
     destination_folder='dir',
     file_handling_callback=new_file_event,

@@ -628,6 +628,43 @@ class ChaskiNode:
         return f"{h}ChaskiNode@{self.ip}:{self.port}"
 
     # ----------------------------------------------------------------------
+    def subscribe(
+        self, subscriptions: List[str], paired: bool = False
+    ) -> None:
+        """
+        Subscribe the node to specified topics.
+
+        This method allows the node to subscribe to additional topics for receiving messages.
+        If the node is already paired for the given subscriptions, it does not duplicate the subscriptions.
+
+        Parameters
+        ----------
+        subscriptions : List[str]
+            A list of subscription topics to which the node should subscribe.
+        paired : bool
+            A flag indicating whether the subscriptions should be marked as paired.
+
+        Notes
+        -----
+        Subscriptions are tracked within the node, allowing it to receive relevant messages
+        from other nodes that share similar interests or topics.
+
+        Examples
+        --------
+        >>> node = ChaskiNode()
+        >>> node.subscribe(['topic1', 'topic2'], paired=True)
+        >>> assert 'topic1' in node.subscriptions
+        >>> assert 'topic2' in node.subscriptions
+        """
+        for subscription in subscriptions:
+            if subscription in self.subscriptions:
+                continue
+            self.subscriptions.append(subscription)
+            self.paired_event[subscription] = asyncio.Event()
+            if paired:
+                self.paired_event[subscription].set()
+
+    # ----------------------------------------------------------------------
     def serializer(self, obj: Any) -> bytes:
         """
         Serialize the provided object using the configured serializer.
@@ -1390,10 +1427,10 @@ class ChaskiNode:
             self.ip,
             self.port,
             ssl=self.ssl_context_server,
-            reuse_address=True,
-            reuse_port=True,
-            # reuse_address=False,
-            # reuse_port=False,
+            # reuse_address=True,
+            # reuse_port=True,
+            reuse_address=False,
+            reuse_port=False,
         )
 
         # Logging the server address and starting keep-alive task

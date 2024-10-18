@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "chaski-confluent"
-version = "0.1a1"
+version = "0.1a5"
 description = "Chaski Confluent"
 readme = "README.md"
 requires-python = ">=3.8"
@@ -54,7 +54,8 @@ security = [
 ]
 
 [project.scripts]
-chaski_certificate_authority = "chaski.scripts.ca_server:main"
-chaski_remote_proxy = "chaski.scripts.proxy_server:main"
-chaski_terminate_connections = "chaski.scripts.close_ports:main"
+chaski_certificate_authority = "chaski.scripts.certificate_authority:main"
+chaski_remote_proxy = "chaski.scripts.remote_proxy:main"
+chaski_streamer_root = "chaski.scripts.streamer_root:main"
+chaski_terminate_connections = "chaski.scripts.terminate_connections:main"
 

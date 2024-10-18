@@ -15,6 +15,7 @@
 
 # %% nbsphinx="hidden"
 import sys
+
 sys.path.append('../../..')
 
 # %% [markdown]
@@ -24,13 +25,13 @@ sys.path.append('../../..')
 # This class handles various network operations such as initiating connections, handling incoming requests,
 # and orchestrating network-wide actions like discovery and pairing of nodes based on shared subscriptions.
 #
-# **Key Features:**  
+# **Key Features:**
 #
-#  - **TCP and UDP Communication**: Supports both TCP and UDP protocols for reliable and timely message delivery.  
-#  - **Node Discovery and Pairing**: Handles discovery of other nodes and establishes connections based on subscriptions.  
-#  - **Ping and Latency Management**: Supports ping operations for measuring latency and maintaining connection health.  
-#  - **Subscription Management**: Manages subscribed topics and pairs nodes sharing common interests.  
-#  - **Keep-alive and Disconnection Handling**: Maintains active connections and handles disconnections gracefully.  
+#  - **TCP and UDP Communication**: Supports both TCP and UDP protocols for reliable and timely message delivery.
+#  - **Node Discovery and Pairing**: Handles discovery of other nodes and establishes connections based on subscriptions.
+#  - **Ping and Latency Management**: Supports ping operations for measuring latency and maintaining connection health.
+#  - **Subscription Management**: Manages subscribed topics and pairs nodes sharing common interests.
+#  - **Keep-alive and Disconnection Handling**: Maintains active connections and handles disconnections gracefully.
 
 # %% [markdown]
 # ## Create node
@@ -48,7 +49,10 @@ node = ChaskiNode(
     serializer=pickle.dumps,  # Function to serialize data before sending.
     deserializer=pickle.loads,  # Function to deserialize received data.
     name='Node',  # The name for the node.
-    subscriptions=['topic1', 'topic2'],  # List of topics the node is interested in.
+    subscriptions=[
+        'topic1',
+        'topic2',
+    ],  # List of topics the node is interested in.
     run=True,  # Flag to start the servers immediately on initialization.
     ttl=64,  # Time-to-live value for discovery messages.
     root=False,  # Flag to indicate if the node is a root node.
@@ -142,7 +146,7 @@ display_graph([node1, node2, node3])
 node1 = ChaskiNode(
     name='Node1',
     subscriptions=['A'],
-    root=True,
+    paired=True,
 )
 
 node2 = ChaskiNode(
@@ -195,7 +199,7 @@ node1 = ChaskiNode(
     ip='127.0.0.1',
     name='Node1',
     subscriptions=['A'],
-    root=True,
+    paired=True,
 )
 
 node2 = ChaskiNode(

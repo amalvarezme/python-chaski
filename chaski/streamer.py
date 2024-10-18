@@ -215,7 +215,7 @@ class ChaskiStreamer(ChaskiNode):
         asynchronous context that supports the asynchronous context manager
         protocol.
         """
-        await self.stop()
+        self.terminate_stream()
 
     # ----------------------------------------------------------------------
     async def push(self, topic: str, data: bytes = None) -> None:
@@ -259,7 +259,8 @@ class ChaskiStreamer(ChaskiNode):
         Once placed in the queue, the message can be retrieved and processed by other
         components of the application.
         """
-        await self.message_queue.put(message)
+        if not self.terminate_stream_flag:
+            await self.message_queue.put(message)
 
     # ----------------------------------------------------------------------
     def activate_file_transfer(self) -> None:
@@ -305,11 +306,19 @@ class ChaskiStreamer(ChaskiNode):
         hanging coroutines.
         """
         while True:
-            message = await self.message_queue.get()
+            try:
+                message = await self.message_queue.get()
+            except Exception as e:
+                await asyncio.sleep(0.1)
+                e
+                continue
+            except asyncio.CancelledError:
+                return
+
             if self.terminate_stream_flag:
                 break
+
             yield message
-        await self.stop()
         self.terminate_stream_flag = True
 
     # ----------------------------------------------------------------------
